@@ -16,6 +16,7 @@
 <title>Aircade · Play curated games with friends</title>
 <!-- Realtime multiplayer backend (Firebase Realtime Database) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
 /* --- fonts baked in (Baloo 2 + Inter, latin subset) - fully offline --- */
@@ -1054,14 +1055,24 @@ const FB_CONFIG = {
   projectId: "project-ff26b4c5-0607-4bb8-930",
   appId: "1:313698866378:web:eb4e29b903e56071199033"
 };
-let AC=null, NET_OK=false, serverSkew=0;
+let AC=null, NET_OK=false, AUTH_OK=false, serverSkew=0;
 const TS = () => (window.firebase ? firebase.database.ServerValue.TIMESTAMP : Date.now());
 const serverNow = () => Date.now() + serverSkew;
 try{
   firebase.initializeApp(FB_CONFIG);
   AC = firebase.database().ref('aircade');
-  NET_OK = true;
-  firebase.database().ref('.info/serverTimeOffset').on('value', s=>{ serverSkew = s.val()||0; });
+  const auth = firebase.auth();
+  // every device gets an anonymous token; the rules require it, so all DB
+  // reads/writes wait until sign-in completes (token-less bots are denied).
+  auth.signInAnonymously().catch(e=>console.warn('anon sign-in failed', e));
+  auth.onAuthStateChanged(user=>{
+    if(user && !AUTH_OK){
+      AUTH_OK=true; NET_OK=true;
+      firebase.database().ref('.info/serverTimeOffset').on('value', s=>{ serverSkew = s.val()||0; });
+      // if Home was reached before auth resolved, light up presence + feeds now
+      if(save.onboarded && $('#home') && $('#home').classList.contains('active')){ publishPresence(); startHomeFeeds(); }
+    }
+  });
 }catch(e){ console.warn('Firebase init failed - multiplayer disabled', e); }
 
 /* presence: announce myself online, auto-remove on disconnect */
