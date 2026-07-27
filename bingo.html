@@ -654,16 +654,15 @@ button{font-family:inherit;cursor:pointer;color:inherit}
       <input class="field" id="handleInput" maxlength="16" placeholder="e.g. dabqueen" autocomplete="off" />
       <div class="mt">
         <div class="who" style="justify-content:center">
-          <div class="avatar ring" id="obPreview" data-verify="gold">
+          <div class="avatar" id="obPreview" data-verify="none">
             <div class="face-c" id="obFace">🦊</div>
-            <div class="badge">✓</div>
           </div>
           <div>
-            <div class="name" id="obName">yourhandle<span class="vcheck gold sm">✓</span></div>
-            <div class="sub">Gold verified · Creator</div>
+            <div class="name" id="obName">yourhandle</div>
+            <div class="sub">New player</div>
           </div>
         </div>
-        <p class="small muted center mt">Badges &amp; creator ring are cosmetic demo status.</p>
+        <p class="small muted center mt">Earn coins by playing. Spend them on rings and dabbers in the shop.</p>
       </div>
       <button class="btn gold mt" id="finishOnboard">Enter the hall ▸</button>
     </div>
@@ -1030,13 +1029,13 @@ const LINES = (()=>{
 const FREE = 12; // center index
 
 /* ------------------------------ PERSISTENCE ------------------------------ */
-const SAVE_KEY = 'bingo.save.v1';
+const SAVE_KEY = 'bingo.save.v2';   // v2: verification off by default, rings are earned/bought
 const defaultSave = () => ({
   handle:'', avatar:'🦊', onboarded:false,
   tokens:100, streak:0, record:{wins:0, losses:0},
-  owned:['frame_none','ring_creator','dab_coral'],
-  equipped:{frame:'frame_none', ring:'ring_creator', dab:'dab_coral'},
-  verify:'gold', creator:true,
+  owned:['frame_none','ring_none','dab_coral'],
+  equipped:{frame:'frame_none', ring:'ring_none', dab:'dab_coral'},
+  verify:'none', creator:false,   // granted later via a backoffice, not by default
   followers:0, follows:{},
   uid:'',
   rooms:[]
@@ -1096,7 +1095,7 @@ function publishPresence(){
   if(!NET_OK || !save.handle) return;
   const ref = AC.child('presence/'+save.uid);
   ref.onDisconnect().remove();
-  ref.set({name:save.handle, face:save.avatar, verify:save.verify, creator:save.creator, at:TS()});
+  ref.set({name:save.handle, face:save.avatar, verify:save.verify, ring:save.equipped.ring, at:TS()});
 }
 
 /* cross-device profile: signed-in users carry their handle + avatar between devices */
@@ -1126,31 +1125,33 @@ function makeCode(){
   return s;
 }
 const meMemberNet = () => ({
-  name:save.handle||'Player', face:save.avatar, verify:save.verify, creator:save.creator,
+  name:save.handle||'Player', face:save.avatar, verify:save.verify, ring:save.equipped.ring,
   ready:false, host:false, joinedAt:TS()
 });
 
 /* ------------------------------ SHOP CATALOG ----------------------------- */
+/* prices are a deliberate grind: rings are the prestige items, earned over many
+   games. win = +100, line = +25, so the Creator ring is ~60 wins. */
 const SHOP = {
   frame:[
     {id:'frame_none', name:'None', cost:0, prev:''},
-    {id:'frame_glow', name:'Neon glow', cost:120, prev:'ring:0 0 0 3px #A78BFA,0 0 14px #A78BFA'},
-    {id:'frame_gold', name:'Gold rim', cost:200, prev:'ring:0 0 0 3px #FBBF24'},
-    {id:'frame_mint', name:'Mint edge', cost:150, prev:'ring:0 0 0 3px #34D399'},
+    {id:'frame_mint', name:'Mint edge', cost:1500, prev:'ring:0 0 0 3px #34D399'},
+    {id:'frame_glow', name:'Neon glow', cost:1800, prev:'ring:0 0 0 3px #A78BFA,0 0 14px #A78BFA'},
+    {id:'frame_gold', name:'Gold rim', cost:2500, prev:'ring:0 0 0 3px #FBBF24'},
   ],
   ring:[
     {id:'ring_none', name:'No ring', cost:0, prev:'none'},
-    {id:'ring_creator', name:'Creator', cost:0, prev:'creator'},
-    {id:'ring_sunset', name:'Sunset', cost:250, prev:'sunset'},
-    {id:'ring_ice', name:'Ice', cost:250, prev:'ice'},
+    {id:'ring_ice', name:'Ice', cost:3000, prev:'ice'},
+    {id:'ring_sunset', name:'Sunset', cost:4000, prev:'sunset'},
+    {id:'ring_creator', name:'Creator', cost:6000, prev:'creator'},
   ],
   dab:[
     {id:'dab_coral', name:'Coral', cost:0, prev:'--coral'},
-    {id:'dab_blue',  name:'Blue',  cost:80, prev:'--blue'},
-    {id:'dab_gold',  name:'Gold',  cost:80, prev:'--gold'},
-    {id:'dab_mint',  name:'Mint',  cost:80, prev:'--mint'},
-    {id:'dab_purple',name:'Purple',cost:80, prev:'--purple'},
-    {id:'dab_rainbow',name:'Rainbow',cost:300, prev:'rainbow'},
+    {id:'dab_blue',  name:'Blue',  cost:500, prev:'--blue'},
+    {id:'dab_gold',  name:'Gold',  cost:500, prev:'--gold'},
+    {id:'dab_mint',  name:'Mint',  cost:500, prev:'--mint'},
+    {id:'dab_purple',name:'Purple',cost:500, prev:'--purple'},
+    {id:'dab_rainbow',name:'Rainbow',cost:2500, prev:'rainbow'},
   ]
 };
 const dabColorVar = () => {
@@ -1280,21 +1281,24 @@ function verifyMark(tier, small){
 }
 const capitalize = s => s ? s[0].toUpperCase()+s.slice(1) : s;
 
+/* ring is an earned/bought cosmetic (see SHOP) — no ring by default */
+const RING_STOPS = { creator:'', sunset:'#FB7185,#FBBF24,#FB7185', ice:'#34D399,#3B82F6,#A78BFA,#34D399' };
+/* inline class + style to paint a ring on any player's avatar from their equipped ring id */
+function ringAttrs(ringId){
+  const it = SHOP.ring.find(r=>r.id===ringId);
+  if(!it || it.prev==='none') return {cls:'', style:''};
+  const stops = RING_STOPS[it.prev];
+  return {cls:' ring', style: stops ? `--ring-stops:${stops};` : ''};
+}
 function applyAvatar(elAvatar, elFace){
   elFace.textContent = save.avatar;
   elAvatar.dataset.verify = save.verify;
-  // ring - creator ring is the default multicolour; shop rings recolour it
   const ring = SHOP.ring.find(r=>r.id===save.equipped.ring) || SHOP.ring[0];
-  const ringStops = {
-    creator:'', // '' => CSS falls back to the default rainbow
-    sunset:'#FB7185,#FBBF24,#FB7185',
-    ice:'#34D399,#3B82F6,#A78BFA,#34D399'
-  };
   if(ring.prev==='none'){
     elAvatar.classList.remove('ring');
   } else {
     elAvatar.classList.add('ring');
-    const stops = ringStops[ring.prev];
+    const stops = RING_STOPS[ring.prev];
     if(stops) elAvatar.style.setProperty('--ring-stops', stops);
     else elAvatar.style.removeProperty('--ring-stops');
   }
@@ -1359,7 +1363,7 @@ async function signInProvider(kind){
     if(code==='auth/popup-blocked' || code==='auth/operation-not-supported-in-this-environment' || code==='auth/web-storage-unsupported'){
       try{ await firebase.auth().signInWithRedirect(provider); return; }catch(e2){ console.warn('redirect start failed', e2 && e2.code); toast('Couldn’t start sign-in','bad'); return; }
     }
-    toast('Sign-in failed. Try again','bad');
+    toast('Sign-in failed: ' + (code || (e && e.message) || 'unknown'), 'bad');   // surface exact error for diagnosis
   }
 }
 $('#googleBtn').addEventListener('click', ()=>signInProvider('google'));
@@ -1644,10 +1648,10 @@ function renderLobby(){
   const wrap=$('#memberList'); wrap.innerHTML='';
   const hostUid = roomData.meta.hostUid;
   mem.forEach(m=>{
-    const isYou=m.uid===save.uid, isHost=m.uid===hostUid;
+    const isYou=m.uid===save.uid, isHost=m.uid===hostUid; const ra=ringAttrs(m.ring);
     const row=document.createElement('div'); row.className='member-row';
     row.innerHTML=`
-      <div class="avatar${m.creator?' ring':''}" data-verify="${m.verify||'none'}" style="width:44px;height:44px">
+      <div class="avatar${ra.cls}" data-verify="${m.verify||'none'}" style="width:44px;height:44px;${ra.style}">
         <div class="face-c" style="font-size:22px">${m.face||'🎮'}</div>
         <span class="pdot online"></span>
       </div>
@@ -1943,7 +1947,10 @@ function relabelPanel(sel, label){
 function openProfile(){
   applyAvatar($('#profAvatar'), $('#profFace'));
   $('#profName').innerHTML = escapeHtml(save.handle) + verifyMark(save.verify);
-  $('#profTag').textContent = (save.creator?'Creator · ':'') + capitalize(save.verify) + ' verified';
+  const tags=[];
+  if(save.verify && save.verify!=='none') tags.push(capitalize(save.verify)+' verified');
+  if(save.equipped.ring && save.equipped.ring!=='ring_none') tags.push('Ring owner');
+  $('#profTag').textContent = tags.length ? tags.join(' · ') : 'Player';
   const others = onlinePlayers().filter(p=>p.uid!==save.uid).length;
   $('#profFollowers').textContent = others;
   $('#profFollowing').textContent = others;
@@ -1965,9 +1972,9 @@ function buildOnlineList(){
     return;
   }
   others.slice(0,20).forEach(p=>{
-    const row=document.createElement('div'); row.className='follow-row';
+    const row=document.createElement('div'); row.className='follow-row'; const ra=ringAttrs(p.ring);
     row.innerHTML=`
-      <div class="avatar${p.creator?' ring':''}" data-verify="${p.verify||'none'}" style="width:46px;height:46px">
+      <div class="avatar${ra.cls}" data-verify="${p.verify||'none'}" style="width:46px;height:46px;${ra.style}">
         <div class="face-c" style="font-size:23px">${p.face||'🎮'}</div>
         <span class="pdot online"></span>
       </div>
