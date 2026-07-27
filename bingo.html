@@ -46,7 +46,7 @@
   --coral:#FB7185;
   --gold:#FBBF24;
   --mint:#34D399;
-  --purple:#A78BFA;
+  --purple:#A78BFA;--aqua:#22D3EE;--rose:#F472B6;--lime:#A3E635;
 
   --ok:#34D399;
   --bad:#FB7185;
@@ -1006,11 +1006,16 @@ button{font-family:inherit;cursor:pointer;color:inherit}
     <!-- the card is drawn to canvas so what you preview is exactly what gets shared -->
     <canvas id="invCanvas" class="inv-canvas" role="img" aria-label="Aircade room invite card"></canvas>
 
-    <div style="display:flex;gap:10px;margin-top:16px">
+    <div class="share-row" style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;justify-content:center">
+      <button class="pill on" id="shareWhatsApp">💬 WhatsApp</button>
+      <button class="pill on" id="shareMessages">✉️ Messages</button>
+      <button class="pill" id="shareMore">More…</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:10px">
       <button class="btn ghost" id="copyCardInvite">Copy text</button>
       <button class="btn green" id="shareCardInvite">Share image ▸</button>
     </div>
-    <p class="small muted center mt" id="cardHint">Shares the card as a PNG where your device supports it.</p>
+    <p class="small muted center mt" id="cardHint">WhatsApp and Messages open with your invite ready. Share image sends the card as a PNG.</p>
   </div>
 </div>
 
@@ -1240,27 +1245,38 @@ const meMemberNet = () => ({
 /* prices are a deliberate grind: rings are the prestige items, earned over many
    games. win = +100, line = +25, so the Creator ring is ~60 wins. */
 const SHOP = {
-  frame:[
-    {id:'frame_none', name:'None', cost:0, prev:''},
-    {id:'frame_mint', name:'Mint edge', cost:1500, prev:'ring:0 0 0 3px #34D399'},
-    {id:'frame_glow', name:'Neon glow', cost:1800, prev:'ring:0 0 0 3px #A78BFA,0 0 14px #A78BFA'},
-    {id:'frame_gold', name:'Gold rim', cost:2500, prev:'ring:0 0 0 3px #FBBF24'},
-  ],
-  ring:[
-    {id:'ring_none', name:'No ring', cost:0, prev:'none'},
-    {id:'ring_ice', name:'Ice', cost:3000, prev:'ice'},
-    {id:'ring_sunset', name:'Sunset', cost:4000, prev:'sunset'},
-    {id:'ring_creator', name:'Creator', cost:6000, prev:'creator'},
-  ],
-  dab:[
+  dab:[   // entry-tier cosmetics: cheap, every one a different price (gold > blue etc.)
     {id:'dab_coral', name:'Coral', cost:0, prev:'--coral'},
-    {id:'dab_blue',  name:'Blue',  cost:500, prev:'--blue'},
-    {id:'dab_gold',  name:'Gold',  cost:500, prev:'--gold'},
-    {id:'dab_mint',  name:'Mint',  cost:500, prev:'--mint'},
-    {id:'dab_purple',name:'Purple',cost:500, prev:'--purple'},
-    {id:'dab_rainbow',name:'Rainbow',cost:2500, prev:'rainbow'},
+    {id:'dab_blue',  name:'Blue',  cost:400, prev:'--blue'},
+    {id:'dab_mint',  name:'Mint',  cost:700, prev:'--mint'},
+    {id:'dab_aqua',  name:'Aqua',  cost:900, prev:'--aqua'},
+    {id:'dab_gold',  name:'Gold',  cost:1200, prev:'--gold'},
+    {id:'dab_rose',  name:'Rose',  cost:1500, prev:'--rose'},
+    {id:'dab_purple',name:'Purple',cost:1800, prev:'--purple'},
+    {id:'dab_lime',  name:'Lime',  cost:2200, prev:'--lime'},
+    {id:'dab_rainbow',name:'Rainbow',cost:3500, prev:'rainbow'},
+  ],
+  frame:[ // mid-tier prestige
+    {id:'frame_none', name:'None', cost:0, prev:''},
+    {id:'frame_mint', name:'Mint edge', cost:2000, prev:'ring:0 0 0 3px #34D399'},
+    {id:'frame_glow', name:'Neon glow', cost:3000, prev:'ring:0 0 0 3px #A78BFA,0 0 14px #A78BFA'},
+    {id:'frame_gold', name:'Gold rim', cost:4500, prev:'ring:0 0 0 3px #FBBF24,0 0 10px #FBBF24'},
+    {id:'frame_holo', name:'Holo', cost:6500, prev:'ring:0 0 0 3px #22D3EE,0 0 16px #A78BFA'},
+    {id:'frame_diamond', name:'Diamond', cost:9000, prev:'ring:0 0 0 3px #E0F2FE,0 0 18px #93C5FD'},
+  ],
+  ring:[  // top-tier grind: the prestige flex, all distinct values
+    {id:'ring_none', name:'No ring', cost:0, prev:'none'},
+    {id:'ring_ice', name:'Ice', cost:4000, prev:'ice'},
+    {id:'ring_sunset', name:'Sunset', cost:7000, prev:'sunset'},
+    {id:'ring_aurora', name:'Aurora', cost:11000, prev:'aurora'},
+    {id:'ring_gold', name:'Gold', cost:15000, prev:'gold'},
+    {id:'ring_onyx', name:'Onyx', cost:20000, prev:'onyx'},
+    {id:'ring_creator', name:'Creator', cost:28000, prev:'creator'},
   ]
 };
+/* Coin earning is tuned so cosmetics are a real grind (drives repeat play) but
+   every game still pays out. Rings are the long-haul prestige goal. */
+const EARN = { line:20, win:120, streakStep:25, streakCap:5, played:15 };
 const dabColorVar = () => {
   const it = SHOP.dab.find(d=>d.id===save.equipped.dab) || SHOP.dab[0];
   if(it.prev==='rainbow') return null; // handled per-cell
@@ -1389,7 +1405,14 @@ function verifyMark(tier, small){
 const capitalize = s => s ? s[0].toUpperCase()+s.slice(1) : s;
 
 /* ring is an earned/bought cosmetic (see SHOP), no ring by default */
-const RING_STOPS = { creator:'', sunset:'#FB7185,#FBBF24,#FB7185', ice:'#34D399,#3B82F6,#A78BFA,#34D399' };
+const RING_STOPS = {
+  creator:'',
+  sunset:'#FB7185,#FBBF24,#FB7185',
+  ice:'#34D399,#3B82F6,#A78BFA,#34D399',
+  aurora:'#34D399,#22D3EE,#A78BFA,#F472B6,#34D399',
+  gold:'#FDE68A,#FBBF24,#F59E0B,#FBBF24,#FDE68A',
+  onyx:'#6B7280,#111827,#9CA3AF,#111827,#6B7280'
+};
 /* inline class + style to paint a ring on any player's avatar from their equipped ring id */
 function ringAttrs(ringId){
   const it = SHOP.ring.find(r=>r.id===ringId);
@@ -1984,6 +2007,18 @@ async function shareInviteImage(){
   closeCard();
 }
 
+/* quick-share straight into a messaging app (surfaces WhatsApp/iMessage/etc.) */
+const encInvite = () => encodeURIComponent(roomInviteText());
+function shareWhatsApp(){ window.open('https://wa.me/?text='+encInvite(), '_blank', 'noopener'); }
+function shareMessages(){ location.href = 'sms:?&body='+encInvite(); }   // iMessage on iOS, SMS on Android
+async function shareMore(){
+  const text=roomInviteText();
+  if(navigator.share){ try{ await navigator.share({title:'Aircade', text}); return; }catch(e){ if(e && e.name==='AbortError') return; } }
+  try{ await navigator.clipboard.writeText(text); toast('Invite copied. Paste to share','good'); }catch(_){}
+}
+$('#shareWhatsApp').addEventListener('click', shareWhatsApp);
+$('#shareMessages').addEventListener('click', shareMessages);
+$('#shareMore').addEventListener('click', shareMore);
 $('#inviteRoomLobby').addEventListener('click', openInviteCard);
 $('#closeCard').addEventListener('click', closeCard);
 $('#cardOverlay').addEventListener('click', e=>{ if(e.target.id==='cardOverlay') closeCard(); });
@@ -2161,7 +2196,7 @@ function startGame(){
   G.card = makeCard();  G.dabbed = newDabbed();  G.calledSet = new Set();
   G.scoredLines = new Set(); G.linesThisGame=0;
   G.running=true; G.over=false; G.auto=true;
-  G.earned = {lines:0, lineTokens:0, win:0, streakBonus:0, total:0};
+  G.earned = {lines:0, lineTokens:0, win:0, streakBonus:0, played:0, total:0};
   gameHeaderCommon();
   $('#autoCall').style.display=''; $('#autoCall').textContent='⏸ Pause';
   $('#oppBlock').style.display='none';   // practice has no rival
@@ -2249,12 +2284,12 @@ function checkPlayerLines(){
   for(const li of done){
     if(!G.scoredLines.has(li)){
       G.scoredLines.add(li); G.linesThisGame++;
-      G.earned.lines++; G.earned.lineTokens += 25;
-      addTokens(25);
+      G.earned.lines++; G.earned.lineTokens += EARN.line;
+      addTokens(EARN.line);
       // floaty near the card
       const r=grid.getBoundingClientRect();
-      floaty('+25', r.left+r.width/2-14, r.top+r.height/2);
-      toast('Line! +25 tokens','good');
+      floaty('+'+EARN.line, r.left+r.width/2-14, r.top+r.height/2);
+      toast('Line! +'+EARN.line+' tokens','good');
     }
   }
   // highlight winning lines
@@ -2287,7 +2322,7 @@ function enterMPGame(){
   G.mode=gm.mode; G.sequence=gm.seq; G.interval=gm.interval||MP_INTERVAL; G.startedAt=gm.startedAt;
   G.idx=-1; G.card=makeCard(); G.dabbed=newDabbed(); G.calledSet=new Set();
   G.scoredLines=new Set(); G.linesThisGame=0; G._lastProg=-1;
-  G.earned={lines:0,lineTokens:0,win:0,streakBonus:0,total:0};
+  G.earned={lines:0,lineTokens:0,win:0,streakBonus:0,played:0,total:0};
   gameHeaderCommon();
   $('#autoCall').style.display='none';   // can't pause a shared clock
   $('#oppBlock').style.display='';
@@ -2353,16 +2388,22 @@ function mpClaim(){
 function endMP(){ G.over=true; G.running=false; G.mpActive=false; clearTimeout(G.mpTimer); leaveMPListeners(); }
 function mpWin(){
   endMP();
-  G.earned.win=100; addTokens(100);
-  save.streak+=1; if(save.streak>=2){ G.earned.streakBonus=50; addTokens(50); }
+  G.earned.win=EARN.win; addTokens(EARN.win);
+  save.streak+=1; if(save.streak>=2){ G.earned.streakBonus=EARN.streakStep*Math.min(save.streak,EARN.streakCap); addTokens(G.earned.streakBonus); }
   save.record.wins+=1; finalizeEarned(); persist();
   showResults('win');
 }
 function mpLose(){
-  endMP(); save.streak=0; save.record.losses+=1; finalizeEarned(); persist();
+  endMP(); save.streak=0; save.record.losses+=1;
+  G.earned.played=EARN.played; addTokens(EARN.played);   // showing up still pays a little
+  finalizeEarned(); persist();
   showResults('lose');
 }
-function mpNoBingo(){ endMP(); finalizeEarned(); persist(); showResults('draw'); }
+function mpNoBingo(){
+  endMP();
+  G.earned.played=EARN.played; addTokens(EARN.played);
+  finalizeEarned(); persist(); showResults('draw');
+}
 
 /* ------------------------------ CLAIMS ----------------------------------- */
 // BINGO claim routes to the multiplayer transaction in a room, or the local check in practice
@@ -2382,9 +2423,9 @@ function endGame(){ G.over=true; G.running=false; clearTimeout(G.tickTimer); cle
 
 function playerWins(){    // solo practice win
   endGame();
-  G.earned.win = 100; addTokens(100);
+  G.earned.win = EARN.win; addTokens(EARN.win);
   save.streak += 1;
-  if(save.streak>=2){ G.earned.streakBonus = 50; addTokens(50); }
+  if(save.streak>=2){ G.earned.streakBonus = EARN.streakStep*Math.min(save.streak,EARN.streakCap); addTokens(G.earned.streakBonus); }
   save.record.wins += 1;
   finalizeEarned();
   persist();
@@ -2397,7 +2438,7 @@ function endNoBingo(){
   showResults('draw');
 }
 function finalizeEarned(){
-  G.earned.total = G.earned.lineTokens + G.earned.win + G.earned.streakBonus;
+  G.earned.total = G.earned.lineTokens + G.earned.win + G.earned.streakBonus + (G.earned.played||0);
 }
 
 /* Auto-call toggle (pause/resume the caller) */
@@ -2582,6 +2623,7 @@ function showResults(kind){
     ['Lines completed ×'+G.earned.lines, G.earned.lineTokens],
     ['Win bonus', G.earned.win],
     ['Streak bonus', G.earned.streakBonus],
+    ['Played bonus', G.earned.played],
   ].filter(r=>r[1]>0 || r[0].startsWith('Lines'));
   rows.forEach(([label,val])=>{
     const d=document.createElement('div'); d.className='brow';
@@ -2711,8 +2753,8 @@ function shopPreview(key,item){
   }
   if(key==='ring'){
     if(item.prev==='none') return '🚫';
-    const map={creator:'conic-gradient(#FB7185,#FBBF24,#34D399,#3B82F6,#A78BFA,#FB7185)',sunset:'conic-gradient(#FB7185,#FBBF24,#FB7185)',ice:'conic-gradient(#34D399,#3B82F6,#A78BFA,#34D399)'};
-    return `<span style="width:44px;height:44px;border-radius:50%;background:${map[item.prev]};-webkit-mask:radial-gradient(transparent 58%,#000 60%);mask:radial-gradient(transparent 58%,#000 60%)"></span>`;
+    const stops = RING_STOPS[item.prev] || '#FB7185,#FBBF24,#34D399,#3B82F6,#A78BFA,#FB7185';  // creator = '' -> rainbow
+    return `<span style="width:44px;height:44px;border-radius:50%;background:conic-gradient(${stops});-webkit-mask:radial-gradient(transparent 58%,#000 60%);mask:radial-gradient(transparent 58%,#000 60%)"></span>`;
   }
   // frame
   if(item.prev==='') return '⬜';
