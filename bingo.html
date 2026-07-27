@@ -150,7 +150,9 @@ button{font-family:inherit;cursor:pointer;color:inherit}
   border:none;box-shadow:0 4px 0 0 rgba(0,0,0,.22);transition:transform .08s var(--pop),box-shadow .08s;
 }
 .btn-oauth:active{transform:translateY(3px);box-shadow:0 1px 0 0 rgba(0,0,0,.22)}
-.btn-oauth .g{width:19px;height:19px}
+.btn-oauth .g{width:19px;height:19px;background-size:contain;background-repeat:no-repeat;background-position:center;display:inline-block;flex:none}
+.btn-oauth .gg{background-image:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHBhdGggZmlsbD0iI0VBNDMzNSIgZD0iTTI0IDkuNWMzLjUgMCA2LjYgMS4yIDkgMy42bDYuOC02LjhDMzUuOSAyLjQgMzAuNCAwIDI0IDAgMTQuNiAwIDYuNSA1LjQgMi42IDEzLjNsNy45IDYuMUMxMi40IDEzLjcgMTcuNyA5LjUgMjQgOS41eiIvPjxwYXRoIGZpbGw9IiM0Mjg1RjQiIGQ9Ik00Ni41IDI0LjVjMC0xLjYtLjEtMy4xLS40LTQuNUgyNHY5aDEyLjdjLS41IDMtMi4yIDUuNS00LjcgNy4ybDcuMyA1LjdDNDMuOSAzNy41IDQ2LjUgMzEuNiA0Ni41IDI0LjV6Ii8+PHBhdGggZmlsbD0iI0ZCQkMwNSIgZD0iTTEwLjUgMjguNmMtLjUtMS41LS44LTMtLjgtNC42cy4zLTMuMi44LTQuNmwtNy45LTYuMUMxIDE2LjUgMCAyMC4xIDAgMjRzMSA3LjUgMi42IDEwLjdsNy45LTYuMXoiLz48cGF0aCBmaWxsPSIjMzRBODUzIiBkPSJNMjQgNDhjNi40IDAgMTEuOS0yLjEgMTUuOC01LjhsLTcuMy01LjdjLTIgMS40LTQuNyAyLjMtOC41IDIuMy02LjMgMC0xMS42LTQuMi0xMy41LTkuOWwtNy45IDYuMUM2LjUgNDIuNiAxNC42IDQ4IDI0IDQ4eiIvPjwvc3ZnPg==")}
+.btn-oauth .ga{background-image:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzAwMCI+PHBhdGggZD0iTTE3LjA1IDEyLjA0Yy0uMDMtMi42IDIuMTItMy44NSAyLjIyLTMuOTEtMS4yMS0xLjc3LTMuMDktMi4wMS0zLjc2LTIuMDQtMS42LS4xNi0zLjEyLjk0LTMuOTMuOTQtLjgxIDAtMi4wNi0uOTItMy4zOS0uOS0xLjc0LjAzLTMuMzUgMS4wMS00LjI1IDIuNTctMS44MSAzLjE0LS40NiA3Ljc5IDEuMyAxMC4zNC44NiAxLjI1IDEuODggMi42NSAzLjIyIDIuNiAxLjI5LS4wNSAxLjc4LS44MyAzLjM0LS44MyAxLjU1IDAgMS45OS44MyAzLjM1LjgxIDEuMzgtLjAzIDIuMjYtMS4yNyAzLjExLTIuNTMuOTgtMS40NSAxLjM4LTIuODUgMS40LTIuOTItLjAzLS4wMS0yLjY5LTEuMDMtMi43Mi00LjA5eiIvPjwvc3ZnPg==");margin-top:-2px}
 
 .pill{
   border:2px solid var(--line-2);background:rgba(255,255,255,.04);color:var(--ink-dim);
@@ -633,6 +635,11 @@ button{font-family:inherit;cursor:pointer;color:inherit}
         <button class="btn-chunky" id="playNow" aria-label="Start playing">
           <span class="face">Start playing ▸</span>
         </button>
+        <div class="oauth-row">
+          <button class="btn-oauth" id="googleBtn"><span class="g gg"></span> Continue with Google</button>
+          <button class="btn-oauth" id="appleBtn"><span class="g ga"></span> Continue with Apple</button>
+        </div>
+        <p class="legal">Guest play works instantly. Sign in to keep your name and stats across devices.</p>
       </div>
     </div>
   </section>
@@ -1055,7 +1062,7 @@ const FB_CONFIG = {
   projectId: "project-ff26b4c5-0607-4bb8-930",
   appId: "1:313698866378:web:eb4e29b903e56071199033"
 };
-let AC=null, NET_OK=false, AUTH_OK=false, serverSkew=0;
+let AC=null, NET_OK=false, AUTH_OK=false, isGuest=true, serverSkew=0;
 const TS = () => (window.firebase ? firebase.database.ServerValue.TIMESTAMP : Date.now());
 const serverNow = () => Date.now() + serverSkew;
 try{
@@ -1064,14 +1071,18 @@ try{
   const auth = firebase.auth();
   // every device gets an anonymous token; the rules require it, so all DB
   // reads/writes wait until sign-in completes (token-less bots are denied).
+  // start as an anonymous guest; a Google/Apple sign-in later swaps in a stable uid
   auth.signInAnonymously().catch(e=>console.warn('anon sign-in failed', e));
   auth.onAuthStateChanged(user=>{
-    if(user && !AUTH_OK){
+    if(!user) return;
+    isGuest = user.isAnonymous;
+    save.uid = user.uid; persist();       // player id = Firebase auth uid (cross-device when signed in)
+    if(!AUTH_OK){
       AUTH_OK=true; NET_OK=true;
       firebase.database().ref('.info/serverTimeOffset').on('value', s=>{ serverSkew = s.val()||0; });
-      // if Home was reached before auth resolved, light up presence + feeds now
-      if(save.onboarded && $('#home') && $('#home').classList.contains('active')){ publishPresence(); startHomeFeeds(); }
     }
+    loadProfile();
+    if(save.onboarded && $('#home') && $('#home').classList.contains('active')){ publishPresence(); startHomeFeeds(); }
   });
 }catch(e){ console.warn('Firebase init failed - multiplayer disabled', e); }
 
@@ -1081,6 +1092,26 @@ function publishPresence(){
   const ref = AC.child('presence/'+save.uid);
   ref.onDisconnect().remove();
   ref.set({name:save.handle, face:save.avatar, verify:save.verify, creator:save.creator, at:TS()});
+}
+
+/* cross-device profile: signed-in users carry their handle + avatar between devices */
+function saveProfile(){
+  if(!NET_OK || !save.handle) return;
+  AC.child('users/'+save.uid).set({handle:save.handle, avatar:save.avatar, at:TS()});
+}
+async function loadProfile(){
+  if(!NET_OK && !(await waitForNet())) return;
+  try{
+    const snap = await AC.child('users/'+save.uid).get();
+    if(snap.exists() && snap.val().handle){
+      const p = snap.val();
+      const changed = save.handle!==p.handle || save.avatar!==p.avatar;
+      save.handle = p.handle; save.avatar = p.avatar || save.avatar; save.onboarded = true; persist();
+      if(changed && $('#home') && $('#home').classList.contains('active')) goHome();
+    } else if(save.onboarded && save.handle){
+      saveProfile();   // first time on the server for this account
+    }
+  }catch(e){ console.warn('profile load failed', e); }
 }
 
 /* room invite code: 5 chars, no ambiguous glyphs */
@@ -1297,7 +1328,29 @@ function enterApp(){
   if(save.onboarded){ goHome(); }
   else { buildAvatarPicker(); $('#handleInput').value=save.handle||''; show('onboard'); }
 }
-$('#playNow').addEventListener('click', enterApp);
+$('#playNow').addEventListener('click', enterApp);   // guest (anonymous)
+
+/* real sign-in: Google + Apple. Signing in swaps the anonymous session for a
+   stable account uid, so the same identity + profile follow you across devices. */
+async function signInProvider(kind){
+  if(!window.firebase || !firebase.auth){ toast('Sign-in unavailable offline','bad'); return; }
+  let provider;
+  if(kind==='google'){ provider = new firebase.auth.GoogleAuthProvider(); }
+  else { provider = new firebase.auth.OAuthProvider('apple.com'); provider.addScope('name'); provider.addScope('email'); }
+  try{
+    await firebase.auth().signInWithPopup(provider);   // onAuthStateChanged sets save.uid + isGuest=false
+    await loadProfile();                                // pull handle/avatar if this account has them
+    enterApp();                                         // home if onboarded, else pick a handle
+  }catch(e){
+    console.warn('sign-in failed', e && e.code, e && e.message);
+    if(e && (e.code==='auth/popup-closed-by-user' || e.code==='auth/cancelled-popup-request')) return;  // user backed out
+    if(e && e.code==='auth/operation-not-allowed') toast('That sign-in isn’t enabled yet','bad');
+    else if(e && e.code==='auth/popup-blocked') toast('Allow popups to sign in','bad');
+    else toast('Sign-in failed. Try again','bad');
+  }
+}
+$('#googleBtn').addEventListener('click', ()=>signInProvider('google'));
+$('#appleBtn').addEventListener('click', ()=>signInProvider('apple'));
 
 /* ------------------------------ ONBOARDING ------------------------------- */
 let pickAvatar = save.avatar;
@@ -1322,6 +1375,7 @@ $('#finishOnboard').addEventListener('click', ()=>{
   const h = ($('#handleInput').value.trim() || 'player'+Math.floor(Math.random()*99)).slice(0,16);
   save.handle=h; save.avatar=pickAvatar; save.onboarded=true;
   persist();
+  saveProfile();   // carry this handle to other devices when signed in
   goHome();
 });
 
