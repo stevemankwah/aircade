@@ -699,7 +699,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
         </div>
         <div id="roomsList" style="margin-top:10px"></div>
         <div class="join-row">
-          <input id="joinCodeInput" class="field" maxlength="7" placeholder="Enter a room code" autocomplete="off"
+          <input id="joinCodeInput" class="field" maxlength="80" placeholder="Room code or invite link" autocomplete="off"
                  autocapitalize="characters" spellcheck="false" style="text-transform:uppercase;margin-top:12px" />
           <button class="btn ghost small" id="joinRoomBtn" style="margin-top:12px">Join</button>
         </div>
@@ -1478,28 +1478,53 @@ if($('#joinCodeInput')) $('#joinCodeInput').addEventListener('keydown', e=>{ if(
 
 /* ---- Firebase room create / join ---- */
 async function createRoomNet(name, game){
-  if(!NET_OK){ toast('No connection. Can’t create a room','bad'); return; }
-  let code, tries=0;
-  do{ code = makeCode(); }while((await AC.child('rooms/'+code+'/meta').get()).exists() && ++tries<8);
-  const ref = AC.child('rooms/'+code);
-  const mem = meMemberNet(); mem.host = true;
-  await ref.set({ meta:{name, game, hostUid:save.uid, createdAt:TS()}, members:{[save.uid]:mem} });
-  ref.child('members/'+save.uid).onDisconnect().remove();
-  rememberRoom(code, name, game);
-  toast('Room created. Invite your friends','good');
-  openRoomLobby(code);
+  if(!NET_OK){ toast('Connecting…',''); if(!(await waitForNet())){ toast('No connection. Can’t create a room','bad'); return; } }
+  try{
+    let code, tries=0;
+    do{ code = makeCode(); }while((await AC.child('rooms/'+code+'/meta').get()).exists() && ++tries<8);
+    const ref = AC.child('rooms/'+code);
+    const mem = meMemberNet(); mem.host = true;
+    await ref.set({ meta:{name, game, hostUid:save.uid, createdAt:TS()}, members:{[save.uid]:mem} });
+    ref.child('members/'+save.uid).onDisconnect().remove();
+    rememberRoom(code, name, game);
+    toast('Room created. Invite your friends','good');
+    openRoomLobby(code);
+  }catch(e){ console.warn('create failed', e); toast('Could not create the room. Try again','bad'); }
+}
+/* pull a room code out of whatever the friend pasted: bare code, invite link,
+   or the whole invite message */
+function parseRoomCode(raw){
+  const s=(raw||'').trim().toUpperCase();
+  const u=s.match(/JOIN\/([A-Z0-9]+)/);          // ...aircade.gg/join/CODE
+  if(u) return u[1];
+  const c=s.match(/CODE[:\s]*([A-Z0-9]{4,10})/);  // "... Code ABCDE ..."
+  if(c) return c[1];
+  return s.replace(/[^A-Z0-9]/g,'');
+}
+/* wait for anonymous auth to finish before hitting the DB (avoids a silent no-op) */
+function waitForNet(ms=5000){
+  if(NET_OK) return Promise.resolve(true);
+  return new Promise(res=>{
+    const t0=Date.now();
+    const iv=setInterval(()=>{
+      if(NET_OK){ clearInterval(iv); res(true); }
+      else if(Date.now()-t0>ms){ clearInterval(iv); res(false); }
+    },120);
+  });
 }
 async function joinRoomNet(rawCode){
-  if(!NET_OK){ toast('No connection. Can’t join','bad'); return; }
-  const code = (rawCode||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const code = parseRoomCode(rawCode);
   if(code.length<4){ toast('Enter a room code','bad'); return; }
-  const meta = await AC.child('rooms/'+code+'/meta').get();
-  if(!meta.exists()){ toast('No room with code '+code, 'bad'); return; }
-  const ref = AC.child('rooms/'+code);
-  await ref.child('members/'+save.uid).set(meMemberNet());
-  ref.child('members/'+save.uid).onDisconnect().remove();
-  rememberRoom(code, meta.val().name, meta.val().game);
-  openRoomLobby(code);
+  if(!NET_OK){ toast('Connecting…',''); if(!(await waitForNet())){ toast('No connection. Can’t join','bad'); return; } }
+  try{
+    const meta = await AC.child('rooms/'+code+'/meta').get();
+    if(!meta.exists()){ toast('No room with code '+code, 'bad'); return; }
+    const ref = AC.child('rooms/'+code);
+    await ref.child('members/'+save.uid).set(meMemberNet());
+    ref.child('members/'+save.uid).onDisconnect().remove();
+    rememberRoom(code, meta.val().name, meta.val().game);
+    openRoomLobby(code);
+  }catch(e){ console.warn('join failed', e); toast('Could not join. Try again','bad'); }
 }
 
 /* ---- live room lobby (subscribes to the room in RTDB) ---- */
