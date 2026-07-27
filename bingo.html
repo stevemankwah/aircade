@@ -1070,7 +1070,7 @@ const FB_CONFIG = {
   projectId: "project-ff26b4c5-0607-4bb8-930",
   appId: "1:313698866378:web:eb4e29b903e56071199033"
 };
-let AC=null, NET_OK=false, AUTH_OK=false, isGuest=true, serverSkew=0;
+let AC=null, NET_OK=false, AUTH_OK=false, isGuest=true, serverSkew=0, skewReady=false;
 const TS = () => (window.firebase ? firebase.database.ServerValue.TIMESTAMP : Date.now());
 const serverNow = () => Date.now() + serverSkew;
 try{
@@ -1083,7 +1083,7 @@ try{
     save.uid = user.uid; persist();       // player id = Firebase auth uid (cross-device when signed in)
     if(!AUTH_OK){
       AUTH_OK=true; NET_OK=true;
-      firebase.database().ref('.info/serverTimeOffset').on('value', s=>{ serverSkew = s.val()||0; });
+      firebase.database().ref('.info/serverTimeOffset').on('value', s=>{ serverSkew = s.val()||0; skewReady = true; });
       subscribeServerState();
     }
     loadProfile().then(()=>{
@@ -1942,11 +1942,12 @@ function startMPGame(){
   if(!roomRef) return;
   const blk=blockedFromPlay(); if(blk){ toast(blk,'bad'); return; }
   const seq = shuffle([...Array(75)].map((_,i)=>i+1));
-  const started = serverNow();
   const mode = G.mode || 'line';
   // game node is written once and never mutated - progress/winner live in siblings
   // so their writes can't race (and abort) this start transaction.
-  roomRef.child('game').transaction(cur => cur ? undefined : {seq, mode, interval:MP_INTERVAL, startedAt:started});
+  // startedAt uses the Firebase server clock (not the starter's local clock) so
+  // every phone computes the same draw from one authoritative baseline.
+  roomRef.child('game').transaction(cur => cur ? undefined : {seq, mode, interval:MP_INTERVAL, startedAt:TS()});
 }
 $('#roomPlay').addEventListener('click', ()=>{
   if($('#roomPlay').disabled) return;
@@ -2203,6 +2204,9 @@ function updateOppMP(o){
    ============================================================================ */
 function enterMPGame(){
   if(G.mpActive) return;
+  // wait for the server-time offset before reading startedAt, or this phone would
+  // compute the draw from an unsynced clock and lag/lead everyone else's board.
+  if(!skewReady){ setTimeout(enterMPGame, 120); return; }
   const gm = roomData.game;
   G.mpActive=true; playContext='room'; G.over=false; G.running=true;
   G.mode=gm.mode; G.sequence=gm.seq; G.interval=gm.interval||MP_INTERVAL; G.startedAt=gm.startedAt;
@@ -2239,6 +2243,8 @@ function onWinnerSnap(snap){
 }
 function mpLoop(){
   if(!G.mpActive || G.over) return;
+  // never advance the shared draw until the server clock is known
+  if(!skewReady){ G.mpTimer=setTimeout(mpLoop, 120); return; }
   const count = Math.max(0, Math.min(75, Math.floor((serverNow()-G.startedAt)/G.interval)+1));
   while(G.idx < count-1 && !G.over){ G.idx++; renderBall(G.sequence[G.idx]); }
   const p = progress(G.dabbed, G.mode);
