@@ -629,14 +629,9 @@ button{font-family:inherit;cursor:pointer;color:inherit}
         <p>Play curated games with friends.</p>
       </div>
       <div class="login-actions">
-        <button class="btn-chunky" id="playNow" aria-label="Play now">
-          <span class="face">Play now ▸</span>
+        <button class="btn-chunky" id="playNow" aria-label="Start playing">
+          <span class="face">Start playing ▸</span>
         </button>
-        <div class="oauth-row">
-          <button class="btn-oauth oauth"></button>
-          <button class="btn-oauth oauth"></button>
-          <button class="btn-oauth oauth"></button>
-        </div>
       </div>
     </div>
   </section>
@@ -1292,14 +1287,6 @@ function enterApp(){
   else { buildAvatarPicker(); $('#handleInput').value=save.handle||''; show('onboard'); }
 }
 $('#playNow').addEventListener('click', enterApp);
-$$('.oauth').forEach((b,i)=>{
-  b.innerHTML = [
-    '<span class="g"></span> Continue with Apple',
-    '<span class="g"></span> Continue with Google',
-    '<span class="g"></span> Continue with phone'
-  ][i];
-  b.addEventListener('click', enterApp);
-});
 
 /* ------------------------------ ONBOARDING ------------------------------- */
 let pickAvatar = save.avatar;
