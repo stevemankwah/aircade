@@ -1,5 +1,8 @@
 <meta charset="utf-8" />
 <title>Aircade Ops</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="robots" content="noindex,nofollow" />
 <style>
@@ -249,10 +252,9 @@ main{padding:22px 0 calc(60px + var(--safe-b))}
     </svg>
     <h1>Aircade Ops</h1>
     <div class="sub">Backoffice · verification &amp; grants</div>
-    <input class="field" id="pw" type="password" placeholder="Admin passphrase" autocomplete="off" />
-    <div style="height:12px"></div>
-    <button class="btn green" id="unlock">Unlock ▸</button>
-    <div class="gate-hint">Mockup preview. Any passphrase opens it.</div>
+    <button class="btn green" id="gGoogle" style="margin-bottom:10px">Sign in with Google</button>
+    <button class="btn ghost" id="gApple">Sign in with Apple</button>
+    <div class="gate-hint" id="gateMsg">Admins only. Sign in with the account you use in Aircade.</div>
   </div>
 </section>
 
@@ -268,7 +270,7 @@ main{padding:22px 0 calc(60px + var(--safe-b))}
         <b>Aircade</b><span class="ops">Ops</span>
       </div>
       <div class="spacer"></div>
-      <div class="whoami"><b>steve</b> · admin <button class="btn ghost small" id="signout">Sign out</button></div>
+      <div class="whoami"><b id="adminName">admin</b> · ops <button class="btn ghost small" id="signout">Sign out</button></div>
     </div>
   </div>
 
@@ -476,25 +478,63 @@ const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelect
 const TIER_ICON={blue:'✓',gold:'✓',black:'✦'};
 const TIER_NAME={none:'None',blue:'Blue',gold:'Gold',black:'Black'};
 
-/* sample players (mock data) */
-let PLAYERS=[
-  {uid:'u_9Dy8kR', handle:'papayaw', face:'🦊', verify:'gold', ring:true, coins:8420, wins:74, joined:'Jun 12', online:true},
-  {uid:'u_3hkkMx', handle:'nova',    face:'🦄', verify:'blue', ring:false, coins:3910, wins:41, joined:'Jul 02', online:true},
-  {uid:'u_znh1he', handle:'kojo',    face:'🐼', verify:'none', ring:false, coins:1240, wins:12, joined:'Jul 20', online:true},
-  {uid:'u_v7akx8', handle:'dabking', face:'🐯', verify:'black', ring:true, coins:15600, wins:188, joined:'May 03', online:false},
-  {uid:'u_q2w9zp', handle:'ama',     face:'🐝', verify:'none', ring:true, coins:6050, wins:60, joined:'Jul 09', online:true},
-  {uid:'u_k7p3mn', handle:'frogger', face:'🐸', verify:'blue', ring:false, coins:1740, wins:19, joined:'Jul 15', online:false},
-  {uid:'u_x1c4bd', handle:'pandapro',face:'🐨', verify:'none', ring:false, coins:510, wins:5, joined:'Jul 24', online:false},
-  {uid:'u_m0z2ll', handle:'obaa',    face:'🦁', verify:'gold', ring:true, coins:9200, wins:96, joined:'Jun 28', online:false},
-];
-let AUDIT=[
-  {who:'steve', act:'granted <b class="tier-word gold">Gold</b> to <b>@obaa</b>', reason:'Partnership creator', when:'2h ago', face:'🦁'},
-  {who:'steve', act:'gave the <b style="color:var(--purple)">creator ring</b> to <b>@ama</b>', reason:'Launch partner', when:'5h ago', face:'🐝'},
-  {who:'steve', act:'granted <b class="tier-word black">Black</b> to <b>@dabking</b>', reason:'Hall of fame', when:'1d ago', face:'🐯'},
-  {who:'steve', act:'revoked verification from <b>@spammer</b>', reason:'Policy violation', when:'2d ago', face:'👤'},
-];
+/* ---- Firebase (real backend) ---- */
+firebase.initializeApp({
+  apiKey:"AIzaSyAghsypvMKmwfIUWyckiaoZ9J4tWWn52kU",
+  authDomain:"project-ff26b4c5-0607-4bb8-930.firebaseapp.com",
+  databaseURL:"https://project-ff26b4c5-0607-4bb8-930-default-rtdb.firebaseio.com",
+  projectId:"project-ff26b4c5-0607-4bb8-930",
+  appId:"1:313698866378:web:eb4e29b903e56071199033"
+});
+const AUTH=firebase.auth(), AC=firebase.database().ref('aircade');
+const TS=()=>firebase.database.ServerValue.TIMESTAMP;
+let myUid=null, myHandle='admin';
 
+/* live data loaded from RTDB */
+let PLAYERS=[], AUDIT=[], REPORTS=[], SANCTIONS=[], LIVEROOMS=[];
+let flagsObj={games:{bingo:true},maintenance:false,chat:true}, announcement='';
 let filter='all', query='', current=null, draft=null;
+
+function ago(ms){ if(!ms) return ''; const s=(Date.now()-ms)/1000;
+  if(s<60) return 'just now'; if(s<3600) return Math.floor(s/60)+'m ago';
+  if(s<86400) return Math.floor(s/3600)+'h ago'; return Math.floor(s/86400)+'d ago'; }
+function logAudit(actHtml, reason){ AC.child('audit').push({who:myHandle, act:actHtml, reason:reason||'', at:TS()}); }
+
+async function loadPlayers(){
+  const [uS,vS,pS,mS]=await Promise.all([AC.child('users').get(),AC.child('verified').get(),AC.child('presence').get(),AC.child('moderation').get()]);
+  const U=uS.val()||{}, V=vS.val()||{}, P=pS.val()||{}, M=mS.val()||{};
+  const ids=new Set([...Object.keys(U),...Object.keys(V),...Object.keys(P),...Object.keys(M)]);
+  PLAYERS=[...ids].map(uid=>{ const u=U[uid]||{}, v=V[uid]||{}, p=P[uid]||{};
+    return { uid, handle:u.handle||p.name||'player', face:u.avatar||p.face||'🎮',
+      verify:v.tier||'none', ring:!!v.ring, online:!!P[uid], sanction:M[uid]?M[uid].type:null }; })
+    .sort((a,b)=>(b.online-a.online) || a.handle.localeCompare(b.handle));
+  SANCTIONS=Object.keys(M).map(uid=>{ const u=U[uid]||P[uid]||{}; const m=M[uid];
+    return { uid, handle:u.handle||u.name||'player', face:u.avatar||u.face||'👤', type:m.type,
+      note:(m.reason||'')+(m.until?' · ends '+ago(m.until*2-Date.now()):''), when:ago(m.at) }; });
+}
+async function loadReports(){
+  const s=await AC.child('reports').get(); const R=s.val()||{};
+  REPORTS=Object.keys(R).map(id=>Object.assign({id}, R[id])).filter(r=>r.status!=='closed')
+    .map(r=>({ id:r.id, kind:r.kind||'player', handle:r.targetHandle||'player', face:'👤', uid:r.targetUid||'',
+      reporter:'@'+(r.reporterHandle||'player'), reason:r.reason||'', quote:'', when:ago(r.at) }))
+    .sort((a,b)=>0);
+}
+async function loadFlagsAnn(){
+  const [f,a]=await Promise.all([AC.child('flags').get(),AC.child('announcement').get()]);
+  flagsObj=f.val()||flagsObj; announcement=(a.val()||{}).text||'';
+}
+async function loadRooms(){
+  const s=await AC.child('rooms').get(); const R=s.val()||{};
+  LIVEROOMS=Object.keys(R).map(code=>{ const r=R[code]||{};
+    return { code, name:(r.meta&&r.meta.name)||'Room', emoji:'🎱',
+      players:r.members?Object.keys(r.members).length:0, state:(r.game&&r.game.seq)?'playing':'lobby',
+      age:ago(r.meta&&r.meta.createdAt) }; }).filter(r=>r.players>0);
+}
+async function loadAudit(){
+  const s=await AC.child('audit').orderByChild('at').limitToLast(20).get(); const A=s.val()||{};
+  AUDIT=Object.keys(A).map(k=>{ const x=A[k]; return {who:x.who,act:x.act,reason:x.reason,when:ago(x.at),face:'🛡️'}; })
+    .reverse();
+}
 
 function tierBadge(v){
   if(v==='none') return '<span class="vb none">Unverified</span>';
@@ -528,8 +568,8 @@ function renderList(){
       </div>
       <div class="pmeta">
         <div class="pname">${p.handle}${p.online?'<span style="width:8px;height:8px;border-radius:50%;background:var(--mint);display:inline-block"></span>':''}</div>
-        <div class="puid mono">${p.uid}</div>
-        <div class="pstats"><b>${p.coins.toLocaleString()}</b> coins · ${p.wins} wins · joined ${p.joined}</div>
+        <div class="puid mono">${p.uid.slice(0,16)}…</div>
+        <div class="pstats">${p.online?'<b style="color:var(--mint)">online</b>':'offline'}${p.sanction?' · <b style="color:var(--coral)">'+p.sanction+'</b>':''}</div>
       </div>
       <div class="pright">
         ${tierBadge(p.verify)}
@@ -577,29 +617,29 @@ function renderMiniAudit(){
 $$('#tierSeg button').forEach(b=>b.addEventListener('click',()=>{ draft.verify=b.dataset.t; syncTier(); }));
 $('#ringTgl').addEventListener('click',()=>{ draft.ring=!draft.ring; syncRing(); });
 $('#ringTgl').addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); draft.ring=!draft.ring; syncRing(); }});
-$('#coinsAdd').addEventListener('click',()=>{
-  const v=parseInt($('#coinsIn').value.replace(/[^0-9]/g,''),10);
-  if(!v){ toast('Enter an amount'); return; }
-  draft.coins=(draft.coins||0)+v; $('#coinsIn').value='';
-  toast('+'+v.toLocaleString()+' coins queued');
-});
-$('#saveGrant').addEventListener('click',()=>{
-  const reason=$('#reasonIn').value.trim()||'-';
+$('#coinsAdd').addEventListener('click',()=>{ toast('Coin grants need the economy backend (later)'); });
+$('#saveGrant').addEventListener('click', async ()=>{
+  const reason=$('#reasonIn').value.trim();
   const changes=[];
-  if(draft.verify!==current.verify){ changes.push(`granted <b class="tier-word ${draft.verify}">${TIER_NAME[draft.verify]}</b>`); current.verify=draft.verify; }
-  if(draft.ring!==current.ring){ changes.push(draft.ring?'gave the <b style="color:var(--purple)">creator ring</b>':'removed the creator ring'); current.ring=draft.ring; }
-  if(draft.coins){ changes.push(`added <b style="color:var(--gold)">${draft.coins.toLocaleString()} coins</b>`); current.coins+=draft.coins; }
+  if(draft.verify!==current.verify) changes.push(`granted <b class="tier-word ${draft.verify}">${TIER_NAME[draft.verify]}</b>`);
+  if(draft.ring!==current.ring) changes.push(draft.ring?'gave the <b style="color:var(--purple)">creator ring</b>':'removed the creator ring');
   if(!changes.length){ toast('No changes'); return; }
-  changes.forEach(c=>AUDIT.unshift({who:'steve', act:c+` to <b>@${current.handle}</b>`, reason, when:'just now', face:current.face}));
-  renderTiles(); renderList(); renderAudit();
-  toast('Saved · '+current.handle+' updated'); closeGrant();
+  try{
+    if(draft.verify==='none' && !draft.ring) await AC.child('verified/'+current.uid).remove();
+    else await AC.child('verified/'+current.uid).set({tier:draft.verify, ring:draft.ring, by:myHandle, at:TS()});
+    changes.forEach(c=>logAudit(c+` to <b>@${current.handle}</b>`, reason));
+    await loadPlayers(); await loadAudit(); renderTiles(); renderList(); renderAudit();
+    toast('Saved · '+current.handle); closeGrant();
+  }catch(e){ console.warn('grant failed',e); toast('Save failed (admin only)'); }
 });
-$('#revokeAll').addEventListener('click',()=>{
+$('#revokeAll').addEventListener('click', async ()=>{
   if(current.verify==='none'&&!current.ring){ toast('Nothing to revoke'); return; }
-  AUDIT.unshift({who:'steve', act:`revoked verification &amp; ring from <b>@${current.handle}</b>`, reason:$('#reasonIn').value.trim()||'-', when:'just now', face:current.face});
-  current.verify='none'; current.ring=false;
-  renderTiles(); renderList(); renderAudit();
-  toast('Revoked · '+current.handle); closeGrant();
+  try{
+    await AC.child('verified/'+current.uid).remove();
+    logAudit(`revoked verification &amp; ring from <b>@${current.handle}</b>`, $('#reasonIn').value.trim());
+    await loadPlayers(); await loadAudit(); renderTiles(); renderList(); renderAudit();
+    toast('Revoked · '+current.handle); closeGrant();
+  }catch(e){ toast('Failed'); }
 });
 $('#grantOverlay').addEventListener('click',e=>{ if(e.target.id==='grantOverlay') closeGrant(); });
 $('#closeGrant').addEventListener('click', closeGrant);
@@ -612,26 +652,18 @@ $$('#filters .chip').forEach(c=>c.addEventListener('click',()=>{
 }));
 
 /* ============================================================ TABS */
-function switchTab(name){
+async function switchTab(name){
   $$('.tb').forEach(b=>b.classList.toggle('on', b.dataset.tab===name));
   $$('.tab').forEach(s=>s.classList.toggle('active', s.id==='tab-'+name));
-  if(name==='mod') renderMod();
-  if(name==='live') renderLive();
-  if(name==='growth') renderGrowth();
   window.scrollTo(0,0);
+  if(name==='players'){ await loadPlayers(); renderTiles(); renderList(); }
+  if(name==='mod'){ await Promise.all([loadReports(),loadPlayers()]); renderMod(); }
+  if(name==='live'){ await Promise.all([loadPlayers(),loadRooms()]); renderLive(); }
+  if(name==='growth'){ await loadFlagsAnn(); renderGrowth(); }
 }
 $$('.tb').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
 
-/* ============================================================ MODERATION (mock) */
-let REPORTS=[
-  {id:1, kind:'chat', handle:'pandapro', face:'🐨', uid:'u_x1c4bd', reporter:'@nova', reason:'Harassment', quote:'get lost you cheater, i know where you live', when:'8m ago'},
-  {id:2, kind:'player', handle:'x_promo99', face:'👤', uid:'u_spam01', reporter:'3 players', reason:'Spam / bot (created 40 rooms)', quote:'', when:'22m ago'},
-  {id:3, kind:'chat', handle:'kojo', face:'🐼', uid:'u_znh1he', reporter:'@ama', reason:'Slur', quote:'[flagged word]', when:'1h ago'},
-];
-let SANCTIONS=[
-  {handle:'toxicguy', face:'👤', type:'ban', note:'Repeated harassment', when:'yesterday'},
-  {handle:'spammer', face:'👤', type:'timeout', note:'Room spam · ends in 20h', when:'4h ago'},
-];
+/* ============================================================ MODERATION */
 let modTarget=null, modDraft='none';
 function renderMod(){
   $('#mReports').textContent=REPORTS.length;
@@ -653,8 +685,8 @@ function renderMod(){
         <button class="btn ghost small" data-a="warn">Warn</button>
         <button class="btn gold small" data-a="mod">Sanction</button>
       </div>`;
-    el.querySelector('[data-a="dismiss"]').addEventListener('click',()=>{ REPORTS=REPORTS.filter(x=>x.id!==r.id); renderMod(); toast('Report dismissed'); });
-    el.querySelector('[data-a="warn"]').addEventListener('click',()=>{ toast('Warning sent to @'+r.handle); });
+    el.querySelector('[data-a="dismiss"]').addEventListener('click',async()=>{ await AC.child('reports/'+r.id).update({status:'closed'}); await loadReports(); renderMod(); toast('Report dismissed'); });
+    el.querySelector('[data-a="warn"]').addEventListener('click',()=>{ logAudit('warned <b>@'+r.handle+'</b>', r.reason); toast('Warning logged for @'+r.handle); });
     el.querySelector('[data-a="mod"]').addEventListener('click',()=>openMod(r));
     rl.appendChild(el);
   });
@@ -666,7 +698,7 @@ function renderMod(){
       <div class="sname">@${s.handle}<div style="font-size:12px;color:var(--faint);font-weight:400">${s.note}</div></div>
       <span class="sbadge ${s.type}">${s.type==='ban'?'Banned':'Timeout'}</span>
       <button class="btn ghost small" data-lift>Lift</button>`;
-    el.querySelector('[data-lift]').addEventListener('click',()=>{ SANCTIONS.splice(i,1); renderMod(); toast('Sanction lifted · @'+s.handle); });
+    el.querySelector('[data-lift]').addEventListener('click',async()=>{ await AC.child('moderation/'+s.uid).remove(); logAudit('lifted sanction on <b>@'+s.handle+'</b>',''); await loadPlayers(); await loadAudit(); renderMod(); renderAudit(); toast('Sanction lifted · @'+s.handle); });
     sl.appendChild(el);
   });
 }
@@ -679,105 +711,110 @@ function openMod(r){
 }
 function closeMod(){ $('#modOverlay').classList.remove('open'); }
 $$('#sancSeg button').forEach(b=>b.addEventListener('click',()=>{ modDraft=b.dataset.s; $$('#sancSeg button').forEach(x=>x.classList.toggle('sel', x===b)); }));
-$('#modApply').addEventListener('click',()=>{
-  const rename=$('#renameIn').value.trim();
-  const acts=[];
-  if(modDraft==='timeout'){ SANCTIONS.unshift({handle:modTarget.handle, face:modTarget.face, type:'timeout', note:'Timeout 24h', when:'just now'}); acts.push('timed out 24h'); }
-  if(modDraft==='suspend'){ SANCTIONS.unshift({handle:modTarget.handle, face:modTarget.face, type:'timeout', note:'Suspended 7d', when:'just now'}); acts.push('suspended 7d'); }
-  if(modDraft==='ban'){ SANCTIONS.unshift({handle:modTarget.handle, face:modTarget.face, type:'ban', note:$('#modReason').value.trim()||'no reason', when:'just now'}); acts.push('banned'); }
-  if(rename){ acts.push('renamed to @'+rename); }
-  if(!acts.length){ toast('Pick a sanction or rename'); return; }
-  REPORTS=REPORTS.filter(x=>x.id!==modTarget.id);
-  renderMod(); toast('@'+modTarget.handle+' · '+acts.join(' + ')); closeMod();
+$('#modApply').addEventListener('click', async ()=>{
+  const rename=$('#renameIn').value.trim(), reason=$('#modReason').value.trim(), uid=modTarget.uid, acts=[];
+  try{
+    if(modDraft==='timeout'){ await AC.child('moderation/'+uid).set({type:'timeout', until:Date.now()+24*3600e3, reason, by:myHandle, at:TS()}); acts.push('timed out 24h'); }
+    else if(modDraft==='suspend'){ await AC.child('moderation/'+uid).set({type:'timeout', until:Date.now()+7*24*3600e3, reason, by:myHandle, at:TS()}); acts.push('suspended 7d'); }
+    else if(modDraft==='ban'){ await AC.child('moderation/'+uid).set({type:'ban', reason, by:myHandle, at:TS()}); acts.push('banned'); }
+    if(rename){ await AC.child('users/'+uid+'/handle').set(rename.slice(0,24)); acts.push('renamed to @'+rename); }
+    if(!acts.length){ toast('Pick a sanction or rename'); return; }
+    if(modTarget.id) await AC.child('reports/'+modTarget.id).update({status:'closed'});
+    logAudit(acts.join(' + ')+' <b>@'+modTarget.handle+'</b>', reason);
+    await loadPlayers(); await loadReports(); await loadAudit(); renderMod(); renderAudit();
+    toast('@'+modTarget.handle+' · '+acts.join(' + ')); closeMod();
+  }catch(e){ console.warn('mod failed',e); toast('Action failed (admin only)'); }
 });
 $('#modCancel').addEventListener('click', closeMod);
 $('#closeMod').addEventListener('click', closeMod);
 $('#modOverlay').addEventListener('click',e=>{ if(e.target.id==='modOverlay') closeMod(); });
 
-/* ============================================================ LIVE OPS (mock) */
-const USAGE=[
-  {k:'Simultaneous connections', used:12, cap:100, fmt:v=>v},
-  {k:'Database storage', used:4.2, cap:1024, fmt:v=>v>=1024?(v/1024).toFixed(1)+' GB':v+' MB'},
-  {k:'Downloads today', used:210, cap:10240, fmt:v=>v>=1024?(v/1024).toFixed(1)+' GB':v+' MB'},
-];
-const LIVEROOMS=[
-  {name:'Friday Night', emoji:'🎱', players:3, state:'playing', age:'2m'},
-  {name:'obaa’s room', emoji:'🎱', players:2, state:'lobby', age:'just now'},
-  {name:'Kejetia Kings', emoji:'🎱', players:4, state:'playing', age:'6m'},
-  {name:'test room', emoji:'🎱', players:1, state:'lobby', age:'18m'},
-];
+/* ============================================================ LIVE OPS */
 const SPARK=[3,5,4,8,11,9,14,12,16,13,10,12];
 function renderLive(){
+  const online=PLAYERS.filter(p=>p.online).length;
   const ub=$('#usageBars'); ub.innerHTML='';
-  USAGE.forEach(u=>{
-    const pct=Math.round(u.used/u.cap*100);
-    const cls=pct>=80?'crit':pct>=50?'warn':'';
-    const el=document.createElement('div'); el.className='ubar '+cls;
-    el.innerHTML=`<div class="top"><span class="k">${u.k}</span><span class="v">${u.fmt(u.used)} / ${u.fmt(u.cap)} · ${pct}%</span></div>
-      <div class="track"><i style="width:${Math.max(3,pct)}%"></i></div>`;
-    ub.appendChild(el);
-  });
-  $('#lOnline').textContent=PLAYERS.filter(p=>p.online).length;
-  $('#lRooms').textContent=LIVEROOMS.length;
-  $('#lGames').textContent=38;
-  $('#lPeak').textContent=16;
-  // sparkline
+  const pct=Math.round(online/100*100), cls=pct>=80?'crit':pct>=50?'warn':'';
+  const el0=document.createElement('div'); el0.className='ubar '+cls;
+  el0.innerHTML=`<div class="top"><span class="k">Simultaneous connections (approx)</span><span class="v">${online} / 100 · ${pct}%</span></div><div class="track"><i style="width:${Math.max(3,pct)}%"></i></div>`;
+  ub.appendChild(el0);
+  const note=document.createElement('div'); note.style.cssText='font-size:12px;color:var(--faint);margin-top:2px';
+  note.textContent='Storage and daily bandwidth quotas live in the Firebase console.'; ub.appendChild(note);
+  $('#lOnline').textContent=online; $('#lRooms').textContent=LIVEROOMS.length;
+  $('#lGames').textContent='n/a'; $('#lPeak').textContent=online;
   const W=320,H=70,pad=6,max=Math.max(...SPARK);
   const pts=SPARK.map((v,i)=>[pad+i*(W-2*pad)/(SPARK.length-1), H-pad-(v/max)*(H-2*pad)]);
   const line=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
-  $('#sparkLine').setAttribute('d', line);
-  $('#sparkFill').setAttribute('d', line+` L${W-pad} ${H} L${pad} ${H} Z`);
+  $('#sparkLine').setAttribute('d', line); $('#sparkFill').setAttribute('d', line+` L${W-pad} ${H} L${pad} ${H} Z`);
   const rl=$('#roomList'); rl.innerHTML='';
-  LIVEROOMS.forEach((r,i)=>{
+  if(!LIVEROOMS.length) rl.innerHTML='<div class="empty">No active rooms right now.</div>';
+  LIVEROOMS.forEach(r=>{
     const el=document.createElement('div'); el.className='room';
-    el.innerHTML=`<div class="re">${r.emoji}</div>
-      <div class="rmeta2"><div class="rn">${r.name}</div><div class="rs">${r.players} players · ${r.age} ago</div></div>
-      <span class="state ${r.state}">${r.state==='playing'?'In game':'Lobby'}</span>
-      <button class="btn ghost small" data-close>Close</button>`;
-    el.querySelector('[data-close]').addEventListener('click',()=>{ LIVEROOMS.splice(i,1); renderLive(); toast('Room closed · '+r.name); });
+    el.innerHTML=`<div class="re">${r.emoji}</div><div class="rmeta2"><div class="rn">${r.name}</div><div class="rs">${r.players} players · ${r.code}</div></div><span class="state ${r.state}">${r.state==='playing'?'In game':'Lobby'}</span><button class="btn ghost small" data-close>Close</button>`;
+    el.querySelector('[data-close]').addEventListener('click',async()=>{ await AC.child('rooms/'+r.code).remove(); logAudit('closed room <b>'+r.name+'</b> ('+r.code+')',''); await loadRooms(); await loadAudit(); renderLive(); renderAudit(); toast('Room closed · '+r.name); });
     rl.appendChild(el);
   });
 }
 
-/* ============================================================ GROWTH + FLAGS (mock) */
-let announcement='';
-let FLAGS=[
-  {id:'bingo', emoji:'🎱', name:'Bingo', desc:'75-ball · live', on:true},
+/* ============================================================ GROWTH + FLAGS */
+const FLAGS=[
+  {id:'bingo', emoji:'🎱', name:'Bingo', desc:'75-ball', on:true},
   {id:'darts', emoji:'🎯', name:'Darts', desc:'Not built yet', on:false},
   {id:'trivia', emoji:'🧠', name:'Trivia', desc:'Not built yet', on:false},
   {id:'match', emoji:'🃏', name:'Match', desc:'Not built yet', on:false},
   {id:'chat', emoji:'💬', name:'Table chat', desc:'In-room messaging', on:true},
   {id:'maint', emoji:'🛠️', name:'Maintenance mode', desc:'Blocks new games for everyone', on:false},
 ];
+function flagState(f){ const g=flagsObj.games||{}; return f.id==='chat'?flagsObj.chat!==false : f.id==='maint'?!!flagsObj.maintenance : !!g[f.id]; }
 function renderGrowth(){
   const p=$('#annPreview');
   if(announcement){ $('#annText').textContent=announcement; p.classList.remove('empty'); }
   else { $('#annText').textContent='No announcement live'; p.classList.add('empty'); }
   const fl=$('#flagList'); fl.innerHTML='';
   FLAGS.forEach(f=>{
+    const on=flagState(f);
     const el=document.createElement('div'); el.className='flag';
-    el.innerHTML=`<div class="fe">${f.emoji}</div><div class="fl"><div class="fn">${f.name}</div><div class="fd">${f.desc}</div></div>
-      <div class="tgl${f.on?' on':''}" role="switch" tabindex="0"></div>`;
-    el.querySelector('.tgl').addEventListener('click',()=>{ f.on=!f.on; renderGrowth(); toast(f.name+(f.on?' enabled':' disabled')); });
+    el.innerHTML=`<div class="fe">${f.emoji}</div><div class="fl"><div class="fn">${f.name}</div><div class="fd">${f.desc}</div></div><div class="tgl${on?' on':''}" role="switch" tabindex="0"></div>`;
+    el.querySelector('.tgl').addEventListener('click',()=>toggleFlag(f));
     fl.appendChild(el);
   });
-  const lb=$('#lbList'); lb.innerHTML='';
-  [...PLAYERS].sort((a,b)=>b.wins-a.wins).slice(0,8).forEach((p2,i)=>{
-    const el=document.createElement('div'); el.className='lr';
-    el.innerHTML=`<div class="rank${i<3?' top':''}">${i+1}</div><div class="lname">${p2.face} ${p2.handle}</div><div class="lw">${p2.wins} wins</div>`;
-    lb.appendChild(el);
-  });
+  $('#lbList').innerHTML='<div class="empty" style="text-align:left">Weekly leaderboard needs server-side win tracking, part of the economy backend (not wired yet).</div>';
 }
-$('#annPublish').addEventListener('click',()=>{ const v=$('#annInput').value.trim(); if(!v){ toast('Type a message first'); return; } announcement=v; renderGrowth(); toast('Announcement published'); });
-$('#annClear').addEventListener('click',()=>{ announcement=''; $('#annInput').value=''; renderGrowth(); toast('Announcement cleared'); });
-$('#lbResetBtn').addEventListener('click',()=>{ toast('Weekly leaderboard reset (mock)'); });
+async function toggleFlag(f){
+  if(!flagsObj.games) flagsObj.games={};
+  if(f.id==='chat') flagsObj.chat=!(flagsObj.chat!==false);
+  else if(f.id==='maint') flagsObj.maintenance=!flagsObj.maintenance;
+  else flagsObj.games[f.id]=!flagsObj.games[f.id];
+  try{ await AC.child('flags').set(flagsObj); logAudit(f.name+(flagState(f)?' enabled':' disabled'),''); renderGrowth(); toast(f.name+' updated'); }
+  catch(e){ toast('Failed (admin only)'); }
+}
+$('#annPublish').addEventListener('click', async ()=>{ const v=$('#annInput').value.trim(); if(!v){ toast('Type a message first'); return; }
+  try{ await AC.child('announcement').set({text:v, at:TS(), by:myHandle}); announcement=v; logAudit('published an announcement','"'+v+'"'); renderGrowth(); $('#annInput').value=''; toast('Announcement published'); }catch(e){ toast('Failed (admin only)'); } });
+$('#annClear').addEventListener('click', async ()=>{ try{ await AC.child('announcement').remove(); announcement=''; logAudit('cleared the announcement',''); renderGrowth(); toast('Announcement cleared'); }catch(e){ toast('Failed'); } });
+$('#lbResetBtn').addEventListener('click',()=>{ toast('Leaderboard reset needs server-side wins (later)'); });
 
-/* gate */
-function unlock(){ $('#gate').style.display='none'; $('#dash').style.display='block';
-  switchTab('players'); renderTiles(); renderList(); renderAudit(); }
-$('#unlock').addEventListener('click', unlock);
-$('#pw').addEventListener('keydown',e=>{ if(e.key==='Enter') unlock(); });
-$('#signout').addEventListener('click',()=>{ $('#dash').style.display='none'; $('#gate').style.display='grid'; $('#pw').value=''; });
+/* ============================================================ SIGN-IN GATE (real) */
+async function loadAll(){ await Promise.all([loadPlayers(),loadReports(),loadFlagsAnn(),loadRooms(),loadAudit()]); renderTiles(); renderList(); renderAudit(); }
+function showDash(){ $('#gate').style.display='none'; $('#dash').style.display='block'; switchTab('players'); }
+async function afterAuth(user){
+  if(!user) return;
+  myUid=user.uid;
+  try{ myHandle=(await AC.child('users/'+myUid+'/handle').get()).val()||'admin'; }catch(e){}
+  $('#adminName').textContent='@'+myHandle;
+  let isAdmin=false; try{ isAdmin=(await AC.child('admins/'+myUid).get()).val()===true; }catch(e){}
+  if(isAdmin){ await loadAll(); showDash(); }
+  else { $('#gateMsg').innerHTML='Signed in, but not an admin yet.<br>Your ID: <b class="mono" style="user-select:all;color:var(--ink)">'+myUid+'</b><br>Send this to the owner to be granted access.'; }
+}
+function signIn(kind){
+  const prov = kind==='google' ? new firebase.auth.GoogleAuthProvider() : new firebase.auth.OAuthProvider('apple.com');
+  AUTH.signInWithPopup(prov).then(r=>afterAuth(r.user))
+    .catch(e=>{ const c=e&&e.code||''; if(c.indexOf('popup')>=0||c.indexOf('operation-not-supported')>=0){ AUTH.signInWithRedirect(prov); return; } console.warn(e); toast('Sign-in failed'); });
+}
+$('#gGoogle').addEventListener('click',()=>signIn('google'));
+$('#gApple').addEventListener('click',()=>signIn('apple'));
+$('#signout').addEventListener('click',()=>AUTH.signOut().then(()=>location.reload()));
+AUTH.getRedirectResult().catch(()=>{});
+AUTH.onAuthStateChanged(u=>{ if(u) afterAuth(u); });
 
 /* toast */
 let tt;

@@ -215,6 +215,9 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .brandbar{display:flex;align-items:center;gap:9px;margin-bottom:14px}
 .brandbar svg{width:23px;height:23px;color:var(--mint);flex:none}
 .brandbar b{font-family:var(--font-display);font-weight:800;font-size:17px;letter-spacing:-.2px}
+.notice{border-radius:14px;padding:11px 14px;font-size:13.5px;font-weight:600;margin-bottom:14px;
+  background:linear-gradient(90deg,rgba(52,211,153,.16),rgba(167,139,250,.16));border:1px solid var(--line-2);color:var(--ink)}
+.notice.bad{background:rgba(251,113,133,.14);border-color:rgba(251,113,133,.4);color:#ffd7e1}
 
 .hero h1{font-size:clamp(30px,9vw,40px);font-weight:800;margin:0 0 6px;line-height:1.1}
 .hero p{color:var(--ink-dim);margin:0 auto;font-size:15px;max-width:280px}
@@ -335,6 +338,10 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .member-row .m-sub{font-size:12px;color:var(--ink-faint)}
 .host-tag{font-family:var(--font-body);font-size:10px;font-weight:700;color:var(--gold);background:rgba(251,191,36,.14);
   border:1px solid rgba(251,191,36,.3);border-radius:999px;padding:1px 7px;margin-left:6px;text-transform:uppercase;letter-spacing:.5px}
+.rep-btn{width:30px;height:30px;border-radius:9px;border:1px solid var(--line-2);background:transparent;color:var(--faint);
+  font-size:14px;flex:none;display:grid;place-items:center;transition:.15s}
+.rep-btn:hover{color:var(--coral);border-color:var(--coral)}
+.rep-btn:active{transform:scale(.92)}
 .ready-pill{font-family:var(--font-display);font-size:12px;font-weight:800;border-radius:999px;padding:5px 12px;flex:none}
 .ready-pill.yes{background:var(--mint);color:#053a28}
 .ready-pill.no{background:var(--card-2);color:var(--ink-faint)}
@@ -678,6 +685,8 @@ button{font-family:inherit;cursor:pointer;color:inherit}
       </svg>
       <b>Aircade</b>
     </div>
+    <div id="sanctionBar" class="notice bad" style="display:none"></div>
+    <div id="annBanner" class="notice" style="display:none"></div>
     <div class="topbar">
       <div class="who" id="homeWho" role="button" tabindex="0" style="cursor:pointer">
         <div class="avatar ring" id="homeAvatar" data-verify="gold">
@@ -1075,6 +1084,7 @@ try{
     if(!AUTH_OK){
       AUTH_OK=true; NET_OK=true;
       firebase.database().ref('.info/serverTimeOffset').on('value', s=>{ serverSkew = s.val()||0; });
+      subscribeServerState();
     }
     loadProfile().then(()=>{
       // a real (non-guest) sign-in just completed while on the login screen -> go in
@@ -1090,12 +1100,51 @@ try{
     .finally(()=>{ if(!auth.currentUser){ auth.signInAnonymously().catch(e=>console.warn('anon sign-in failed', e)); } });
 }catch(e){ console.warn('Firebase init failed - multiplayer disabled', e); }
 
+/* ---- server-controlled state (set from the backoffice) ---- */
+let FLAGS={games:{bingo:true},maintenance:false,chat:true}, myModeration=null;
+const effectiveRing = () => save.grantedRing ? 'ring_creator' : save.equipped.ring;
+const isGameLive = id => !!(FLAGS.games && FLAGS.games[id]);
+const isMaintenance = () => !!FLAGS.maintenance;
+const isSanctioned = () => !!(myModeration && (myModeration.type==='ban' || (myModeration.until && myModeration.until > serverNow())));
+function subscribeServerState(){
+  if(!NET_OK) return;
+  // verification + granted ring (admin-controlled; server is source of truth)
+  AC.child('verified/'+save.uid).on('value', s=>{
+    const v=s.val()||{};
+    save.verify = v.tier || 'none';
+    save.grantedRing = !!v.ring;
+    persist(); refreshAvatars();
+    if($('#homeName')) $('#homeName').innerHTML = escapeHtml(save.handle) + verifyMark(save.verify);
+    publishPresence();
+  });
+  // feature flags -> which games are live + maintenance
+  AC.child('flags').on('value', s=>{ FLAGS = s.val() || FLAGS; if($('#home').classList.contains('active')) buildGames(); });
+  // announcement banner
+  AC.child('announcement').on('value', s=>{ renderAnnouncement((s.val()||{}).text || ''); });
+  // my own sanction status
+  AC.child('moderation/'+save.uid).on('value', s=>{ myModeration = s.val(); applyModeration(); });
+}
+function renderAnnouncement(text){
+  const el=$('#annBanner'); if(!el) return;
+  if(text){ el.textContent='📣 '+text; el.style.display=''; }
+  else { el.style.display='none'; }
+}
+function applyModeration(){
+  const b=$('#sanctionBar'); if(!b) return;
+  if(isSanctioned()){
+    const perm = myModeration.type==='ban';
+    b.textContent = perm ? '🚫 Your account is suspended. '+(myModeration.reason||'')
+                         : '⏳ You’re timed out. '+(myModeration.reason||'');
+    b.style.display='';
+  } else b.style.display='none';
+}
+
 /* presence: announce myself online, auto-remove on disconnect */
 function publishPresence(){
   if(!NET_OK || !save.handle) return;
   const ref = AC.child('presence/'+save.uid);
   ref.onDisconnect().remove();
-  ref.set({name:save.handle, face:save.avatar, verify:save.verify, ring:save.equipped.ring, at:TS()});
+  ref.set({name:save.handle, face:save.avatar, verify:save.verify, ring:effectiveRing(), at:TS()});
 }
 
 /* cross-device profile: signed-in users carry their handle + avatar between devices */
@@ -1125,7 +1174,7 @@ function makeCode(){
   return s;
 }
 const meMemberNet = () => ({
-  name:save.handle||'Player', face:save.avatar, verify:save.verify, ring:save.equipped.ring,
+  name:save.handle||'Player', face:save.avatar, verify:save.verify, ring:effectiveRing(),
   ready:false, host:false, joinedAt:TS()
 });
 
@@ -1281,7 +1330,7 @@ function verifyMark(tier, small){
 }
 const capitalize = s => s ? s[0].toUpperCase()+s.slice(1) : s;
 
-/* ring is an earned/bought cosmetic (see SHOP) — no ring by default */
+/* ring is an earned/bought cosmetic (see SHOP), no ring by default */
 const RING_STOPS = { creator:'', sunset:'#FB7185,#FBBF24,#FB7185', ice:'#34D399,#3B82F6,#A78BFA,#34D399' };
 /* inline class + style to paint a ring on any player's avatar from their equipped ring id */
 function ringAttrs(ringId){
@@ -1293,7 +1342,7 @@ function ringAttrs(ringId){
 function applyAvatar(elAvatar, elFace){
   elFace.textContent = save.avatar;
   elAvatar.dataset.verify = save.verify;
-  const ring = SHOP.ring.find(r=>r.id===save.equipped.ring) || SHOP.ring[0];
+  const ring = SHOP.ring.find(r=>r.id===effectiveRing()) || SHOP.ring[0];
   if(ring.prev==='none'){
     elAvatar.classList.remove('ring');
   } else {
@@ -1428,13 +1477,14 @@ const GAMES = [
 function buildGames(){
   const grid=$('#gameGrid'); grid.innerHTML='';
   GAMES.forEach(g=>{
+    const live=isGameLive(g.id);
     const card=document.createElement('button');
-    card.className='game-card'+(g.ready?'':' soon');
+    card.className='game-card'+(live?'':' soon');
     card.innerHTML=`
-      <span class="game-tag ${g.ready?'live':'soon'}">${g.ready?'Live':'Soon'}</span>
+      <span class="game-tag ${live?'live':'soon'}">${live?'Live':'Soon'}</span>
       <div class="ge">${g.emoji}</div>
       <div class="gn">${g.name}</div>
-      <div class="gt">${g.tag}${g.ready?' · live':' · soon'}</div>`;
+      <div class="gt">${g.tag}${live?' · live':' · soon'}</div>`;
     card.addEventListener('click',()=>openGameView(g.id));
     grid.appendChild(card);
   });
@@ -1446,10 +1496,10 @@ function openGameView(id){
   $('#gvTitle').textContent = g.name;
   $('#gvEmoji').textContent = g.emoji;
   $('#gvName').textContent  = g.name;
-  $('#gvTag').textContent   = g.ready ? (g.tag+' · solo practice') : (g.tag+' · coming soon');
+  $('#gvTag').textContent   = isGameLive(g.id) ? (g.tag+' · solo practice') : (g.tag+' · coming soon');
   $('#gvBlurb').textContent = g.blurb;
   $('#gvTokVal').textContent = save.tokens;
-  const playable = g.ready;
+  const playable = isGameLive(g.id);
   $('#gvBingoOpts').style.display = (playable && g.id==='bingo') ? '' : 'none';
   $('#startGame').style.display   = playable ? '' : 'none';
   $('#startGame').textContent     = 'Practice solo ▸';
@@ -1523,11 +1573,12 @@ function closeRoom(){ $('#roomOverlay').classList.remove('open'); }
 function buildCreateGames(){
   const grid=$('#createGameGrid'); grid.innerHTML='';
   GAMES.forEach(g=>{
+    const live=isGameLive(g.id);
     const c=document.createElement('button');
-    c.className='game-card'+(g.ready?'':' soon')+(g.id===createGame?' sel':'');
-    c.innerHTML=`<span class="game-tag ${g.ready?'live':'soon'}">${g.ready?'Live':'Soon'}</span>
+    c.className='game-card'+(live?'':' soon')+(g.id===createGame?' sel':'');
+    c.innerHTML=`<span class="game-tag ${live?'live':'soon'}">${live?'Live':'Soon'}</span>
       <div class="ge">${g.emoji}</div><div class="gn">${g.name}</div><div class="gt">${g.tag}</div>`;
-    c.addEventListener('click',()=>{ if(!g.ready){toast(g.name+' is coming soon','');return;} createGame=g.id; buildCreateGames(); });
+    c.addEventListener('click',()=>{ if(!live){toast(g.name+' is coming soon','');return;} createGame=g.id; buildCreateGames(); });
     grid.appendChild(c);
   });
 }
@@ -1659,7 +1710,9 @@ function renderLobby(){
         <div class="m-name">${escapeHtml(m.name||'Player')}${verifyMark(m.verify,true)}${isHost?'<span class="host-tag">Host</span>':''}</div>
         <div class="m-sub">${isYou?'You':'Joined'}</div>
       </div>
+      ${isYou?'':'<button class="rep-btn" title="Report" aria-label="Report player">⚑</button>'}
       <span class="ready-pill ${m.ready?'yes':'no'}">${m.ready?'Ready':'Not ready'}</span>`;
+    const rb=row.querySelector('.rep-btn'); if(rb) rb.addEventListener('click',()=>reportPlayer(m));
     wrap.appendChild(row);
   });
   const me=mem.find(m=>m.uid===save.uid);
@@ -1682,6 +1735,17 @@ $('#copyRoomLobby').addEventListener('click', ()=>{
   toast('Room code copied','good');
 });
 const roomInviteText = () => `Join me on Aircade 🎮  Room “${(roomData&&roomData.meta&&roomData.meta.name)||'my room'}” · Code ${currentCode}  → https://aircade.gg/join/${currentCode}`;
+
+/* file a report on another player -> lands in the backoffice moderation queue */
+function reportPlayer(m){
+  if(!NET_OK){ toast('No connection','bad'); return; }
+  const reason = prompt('Report '+(m.name||'player')+' for:', 'Abusive behaviour');
+  if(reason===null) return;
+  AC.child('reports').push({ kind:'player', targetUid:m.uid, targetHandle:m.name||'player',
+    reporterUid:save.uid, reporterHandle:save.handle||'player', reason:(reason||'').slice(0,120),
+    roomCode:currentCode||'', at:TS(), status:'open' })
+    .then(()=>toast('Reported. Thanks for flagging','good')).catch(()=>toast('Could not report','bad'));
+}
 
 /* ============================================================================
    INVITE CARD  -  hand-drawn to canvas so Share can attach a real PNG
@@ -1869,8 +1933,14 @@ $('#copyCardInvite').addEventListener('click', ()=>{
 $('#shareCardInvite').addEventListener('click', shareInviteImage);
 
 /* any ready member can start; writes the shared game once (transaction guards double-start) */
+function blockedFromPlay(){
+  if(isSanctioned()) return myModeration.type==='ban' ? 'Your account is suspended' : 'You’re timed out';
+  if(isMaintenance()) return 'Aircade is in maintenance right now';
+  return null;
+}
 function startMPGame(){
   if(!roomRef) return;
+  const blk=blockedFromPlay(); if(blk){ toast(blk,'bad'); return; }
   const seq = shuffle([...Array(75)].map((_,i)=>i+1));
   const started = serverNow();
   const mode = G.mode || 'line';
@@ -2007,6 +2077,7 @@ function gameHeaderCommon(){
 
 /* SOLO PRACTICE - no opponent, local timed caller (the AI is gone) */
 function startGame(){
+  const blk=blockedFromPlay(); if(blk){ toast(blk,'bad'); return; }
   clearTimeout(G.tickTimer); clearTimeout(G.mpTimer);
   G.mpActive=false; playContext='solo';
   G.sequence = shuffle([...Array(75)].map((_,i)=>i+1));
