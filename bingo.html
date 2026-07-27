@@ -280,9 +280,13 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .roomcode{display:flex;align-items:center;justify-content:space-between;gap:10px;
   background:var(--plum-3);border:1px dashed var(--line-2);border-radius:var(--r-md);padding:14px 16px}
 .roomcode .code{font-family:var(--font-display);font-weight:800;font-size:22px;letter-spacing:2px;color:var(--mint);white-space:nowrap}
-.circle-row{display:flex;gap:10px;margin-top:4px}
+.circle-row{display:flex;gap:12px;margin-top:4px;overflow-x:auto;padding-bottom:2px}
 .circle-row .av2{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   font-size:22px;background:linear-gradient(135deg,#3a2c66,#5a3f9e);border:2px solid rgba(255,255,255,.1)}
+.cav{display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;flex:none;background:none;border:0;padding:0;cursor:pointer}
+.cav .cn{max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;text-align:center;color:var(--ink-faint);font-weight:700;font-family:var(--font-display)}
+.cav.me .av2{outline:2px solid var(--mint)}
+.cav:active .av2{transform:scale(.92)}
 .mode-row{display:flex;gap:10px;margin:14px 0}
 .mode-btn{flex:1;background:var(--plum-3);border:2px solid var(--line);border-radius:var(--r-md);padding:14px;text-align:left;
   transition:transform .12s var(--pop),border-color .2s,background .2s,box-shadow .2s}
@@ -321,8 +325,13 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .join-row .field{flex:1;letter-spacing:2px;font-family:var(--font-display);font-weight:700}
 .join-row .btn.small{flex:none;align-self:stretch}
 .room-item{display:flex;align-items:center;gap:12px;padding:12px;background:var(--plum-3);border:1px solid var(--line);
-  border-radius:var(--r-md);margin-bottom:8px;text-align:left;width:100%;transition:transform .12s var(--pop),border-color .2s}
+  border-radius:var(--r-md);margin-bottom:8px;text-align:left;width:100%;cursor:pointer;transition:transform .12s var(--pop),border-color .2s}
 .room-item:last-child{margin-bottom:0}
+.room-item .ri-x{width:28px;height:28px;border-radius:8px;border:1px solid var(--line-2);background:transparent;color:var(--faint);flex:none;font-size:13px}
+.room-item .ri-x:active{transform:scale(.9)}
+.host-controls{display:flex;gap:8px;margin:-6px 0 16px}
+.ball.bigball.mine{box-shadow:0 0 0 4px var(--mint),0 0 26px 2px var(--mint)}
+.pill.danger{border-color:var(--coral);color:var(--coral)}
 .room-item:active{transform:scale(.98)}
 .room-item .ri-emoji{width:44px;height:44px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;
   font-size:22px;background:linear-gradient(160deg,#2d2154,#3a2c66)}
@@ -334,8 +343,10 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .member-row{display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line)}
 .member-row:last-child{border-bottom:0}
 .member-row .m-meta{flex:1;min-width:0}
-.member-row .m-name{font-family:var(--font-display);font-weight:700;font-size:15px;display:flex;align-items:center}
+.member-row .m-name{font-family:var(--font-display);font-weight:700;font-size:15px;display:flex;align-items:center;gap:4px;min-width:0}
 .member-row .m-sub{font-size:12px;color:var(--ink-faint)}
+.member-row .rep-btn,.member-row .follow-btn,.member-row .ready-pill{flex:none}
+.nm-ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .host-tag{font-family:var(--font-body);font-size:10px;font-weight:700;color:var(--gold);background:rgba(251,191,36,.14);
   border:1px solid rgba(251,191,36,.3);border-radius:999px;padding:1px 7px;margin-left:6px;text-transform:uppercase;letter-spacing:.5px}
 .rep-btn{width:30px;height:30px;border-radius:9px;border:1px solid var(--line-2);background:transparent;color:var(--faint);
@@ -547,7 +558,8 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .follow-row{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid var(--line)}
 .follow-row:last-child{border-bottom:0}
 .follow-row .meta{flex:1;min-width:0}
-.follow-row .fn{font-family:var(--font-display);font-weight:700;font-size:15px;display:flex;align-items:center}
+.follow-row .fn{font-family:var(--font-display);font-weight:700;font-size:15px;display:flex;align-items:center;gap:4px;min-width:0}
+.follow-row .follow-btn{flex:none}
 .follow-row .fs{font-size:12px;color:var(--ink-faint)}
 .follow-btn{border:2px solid var(--mint);background:transparent;color:var(--mint);border-radius:999px;
   padding:7px 16px;font-weight:800;font-family:var(--font-display);font-size:13px;flex:none;transition:transform .12s var(--pop),background .2s,color .2s}
@@ -791,6 +803,11 @@ button{font-family:inherit;cursor:pointer;color:inherit}
       </div>
     </div>
 
+    <div class="host-controls" id="hostControls" style="display:none">
+      <button class="pill" id="renameRoomBtn">✏️ Rename</button>
+      <button class="pill danger" id="deleteRoomBtn">🗑 Delete room</button>
+    </div>
+
     <div class="panel" style="margin-bottom:16px">
       <p class="section-t">In this room · <span id="roomCount">1</span></p>
       <div id="memberList"></div>
@@ -1016,6 +1033,17 @@ button{font-family:inherit;cursor:pointer;color:inherit}
       <button class="btn green" id="shareCardInvite">Share image ▸</button>
     </div>
     <p class="small muted center mt" id="cardHint">WhatsApp and Messages open with your invite ready. Share image sends the card as a PNG.</p>
+  </div>
+</div>
+
+<!-- ============ PLAYER SHEET (tap a player -> name + follow) ============ -->
+<div class="overlay" id="playerOverlay">
+  <div class="sheet" style="text-align:center;max-width:340px">
+    <div class="sheet-h">
+      <h2 style="font-size:18px">Player</h2>
+      <button class="icon-btn" id="closePlayer" aria-label="Close">✕</button>
+    </div>
+    <div id="playerSheetBody"></div>
   </div>
 </div>
 
@@ -1638,15 +1666,17 @@ function buildRoomsList(){
   }
   rooms.forEach(r=>{
     const g=GAMES.find(x=>x.id===r.game)||GAMES[0];
-    const b=document.createElement('button'); b.className='room-item';
+    const b=document.createElement('div'); b.className='room-item'; b.setAttribute('role','button');
     b.innerHTML=`
       <div class="ri-emoji">${g.emoji}</div>
       <div class="ri-meta">
         <div class="ri-name">${escapeHtml(r.name||'Room')}</div>
         <div class="ri-sub">${g.name} · tap to open</div>
       </div>
-      <div class="ri-code">${r.code}</div>`;
+      <div class="ri-code">${r.code}</div>
+      <button class="ri-x" aria-label="Remove from your rooms">✕</button>`;
     b.addEventListener('click',()=>openRoomLobby(r.code));
+    b.querySelector('.ri-x').addEventListener('click',e=>{ e.stopPropagation(); forgetRoom(r.code); buildRoomsList(); toast('Removed from your rooms',''); });
     wrap.appendChild(b);
   });
 }
@@ -1800,7 +1830,7 @@ function renderLobby(){
         <span class="pdot online"></span>
       </div>
       <div class="m-meta">
-        <div class="m-name">${escapeHtml(m.name||'Player')}${verifyMark(m.verify,true)}${isHost?'<span class="host-tag">Host</span>':''}</div>
+        <div class="m-name"><span class="nm-ellipsis">${escapeHtml(m.name||'Player')}</span>${verifyMark(m.verify,true)}${isHost?'<span class="host-tag">Host</span>':''}</div>
         <div class="m-sub">${isYou?'You':'Joined'}</div>
       </div>
       ${isYou?'':`<button class="follow-btn sm ${isFollowing(m.uid)?'on':''}">${isFollowing(m.uid)?'Following':'Follow'}</button>`}
@@ -1810,6 +1840,7 @@ function renderLobby(){
     const fb=row.querySelector('.follow-btn'); if(fb) fb.addEventListener('click',()=>toggleFollow({uid:m.uid, handle:m.name||'Player', face:m.face||'🎮', verify:m.verify||'none', ring:m.ring||'ring_none'}));
     wrap.appendChild(row);
   });
+  $('#hostControls').style.display = (hostUid===save.uid) ? 'flex' : 'none';
   const me=mem.find(m=>m.uid===save.uid);
   const anyReady=mem.some(m=>m.ready), enough=mem.length>=2;
   $('#readyToggle').classList.toggle('on', !!(me&&me.ready));
@@ -1820,6 +1851,28 @@ function renderLobby(){
     : !anyReady ? 'Ready up. Anyone in the room can start.' : 'Anyone in the room can start now.';
 }
 $('#roomBack').addEventListener('click', ()=>{ leaveRoom(); goHome(); });
+/* host: rename or delete the room */
+function renameRoom(){
+  if(!roomRef || !roomData || !roomData.meta) return;
+  if(roomData.meta.hostUid!==save.uid){ toast('Only the host can rename','bad'); return; }
+  const name=(prompt('Room name', roomData.meta.name||'')||'').trim().slice(0,24);
+  if(!name) return;
+  roomRef.child('meta/name').set(name);
+  rememberRoom(currentCode, name, roomData.meta.game||'bingo');
+  toast('Room renamed','good');
+}
+async function deleteRoom(){
+  if(!roomRef || !currentCode || !roomData || !roomData.meta) return;
+  if(roomData.meta.hostUid!==save.uid){ toast('Only the host can delete','bad'); return; }
+  if(!confirm('Delete this room for everyone?')) return;
+  const code=currentCode;
+  try{ roomRef.child('members/'+save.uid).onDisconnect().cancel(); }catch(e){}
+  await roomRef.remove();            // wipes the room; other members get "Room closed"
+  forgetRoom(code); detachRoom(); currentCode=null; roomData=null;
+  toast('Room deleted',''); goHome();
+}
+$('#renameRoomBtn').addEventListener('click', renameRoom);
+$('#deleteRoomBtn').addEventListener('click', deleteRoom);
 $('#readyToggle').addEventListener('click', ()=>{
   if(!roomRef) return;
   const me=membersArr().find(m=>m.uid===save.uid);
@@ -2036,6 +2089,8 @@ async function shareMore(){
 $('#shareWhatsApp').addEventListener('click', shareWhatsApp);
 $('#shareMessages').addEventListener('click', shareMessages);
 $('#shareMore').addEventListener('click', shareMore);
+$('#closePlayer').addEventListener('click', closePlayer);
+$('#playerOverlay').addEventListener('click', e=>{ if(e.target.id==='playerOverlay') closePlayer(); });
 $('#inviteRoomLobby').addEventListener('click', openInviteCard);
 $('#closeCard').addEventListener('click', closeCard);
 $('#cardOverlay').addEventListener('click', e=>{ if(e.target.id==='cardOverlay') closeCard(); });
@@ -2085,15 +2140,38 @@ function onlinePlayers(){
 }
 function renderCircle(){
   const row=$('#circleRow'); if(!row) return; row.innerHTML='';
-  const others = onlinePlayers().filter(p=>p.uid!==save.uid).slice(0,5);
-  const list=[{uid:save.uid, face:save.avatar, you:true}, ...others];
-  list.forEach(m=>{
-    const d=document.createElement('div'); d.className='av2'; d.style.position='relative';
-    d.innerHTML=`${m.face||'🎮'}<span class="pdot online"></span>`;
-    if(m.you) d.style.outline='2px solid var(--mint)';
-    row.appendChild(d);
+  const others = onlinePlayers().filter(p=>p.uid!==save.uid).slice(0,8);
+  const me={uid:save.uid, face:save.avatar, name:save.handle, verify:save.verify, ring:effectiveRing(), you:true};
+  [me, ...others].forEach(m=>{
+    // a name label under every avatar so same-avatar players are still tellable apart;
+    // tap someone to see their name + follow them.
+    const cav=document.createElement(m.you?'div':'button'); cav.className='cav'+(m.you?' me':'');
+    cav.innerHTML=`<div class="av2" style="position:relative">${m.face||'🎮'}<span class="pdot online"></span></div>
+      <div class="cn">${m.you?'You':escapeHtml(m.name||'Player')}</div>`;
+    if(!m.you) cav.addEventListener('click',()=>openPlayerSheet(m));
+    row.appendChild(cav);
   });
 }
+/* tap a player (circle / lists) -> name, badge, follow */
+function openPlayerSheet(p){
+  if(!p || p.uid===save.uid) return;
+  const ra=ringAttrs(p.ring);
+  $('#playerSheetBody').innerHTML=`
+    <div class="avatar${ra.cls}" data-verify="${p.verify||'none'}" style="width:78px;height:78px;margin:4px auto 12px;${ra.style}">
+      <div class="face-c" style="font-size:40px">${p.face||'🎮'}</div>
+      <span class="pdot online" style="width:16px;height:16px"></span>
+    </div>
+    <div style="font-family:var(--font-display);font-weight:800;font-size:21px;display:flex;justify-content:center;align-items:center;gap:3px">${escapeHtml(p.name||'Player')}${verifyMark(p.verify,true)}</div>
+    <div class="small muted center" style="margin:4px 0 18px">Online now</div>
+    <button class="btn" id="playerFollowBtn" style="width:100%"></button>`;
+  const btn=$('#playerFollowBtn');
+  let fol=isFollowing(p.uid);
+  const paint=()=>{ btn.textContent=fol?'Following ✓':'Follow'; btn.className='btn '+(fol?'ghost':'green'); };
+  btn.addEventListener('click',()=>{ toggleFollow({uid:p.uid, handle:p.name||'Player', face:p.face||'🎮', verify:p.verify||'none', ring:p.ring||'ring_none'}); fol=!fol; paint(); });
+  paint();
+  $('#playerOverlay').classList.add('open');
+}
+function closePlayer(){ $('#playerOverlay').classList.remove('open'); }
 function renderLive(){
   const panel=$('#livePanel'), list=$('#liveList'); if(!panel) return;
   const rooms=Object.keys(homeRooms).map(code=>{
@@ -2156,7 +2234,7 @@ function personRow(p, opts){
       ${opts&&opts.online?'<span class="pdot online"></span>':''}
     </div>
     <div class="meta">
-      <div class="fn">${escapeHtml(p.name||p.handle||'Player')}${verifyMark(p.verify,true)}</div>
+      <div class="fn"><span class="nm-ellipsis">${escapeHtml(p.name||p.handle||'Player')}</span>${verifyMark(p.verify,true)}</div>
       <div class="fs status-txt ${opts&&opts.online?'online':''}">${opts&&opts.online?'<span class="d"></span>Online':'Following'}</div>
     </div>
     ${isMe?'':`<button class="follow-btn ${following?'on':''}">${following?'Following':'Follow'}</button>`}`;
@@ -2259,19 +2337,19 @@ function scheduleTick(ms){
 G.calledSet = new Set();
 
 /* render one drawn ball (shared by solo + multiplayer); assumes G.idx already advanced */
-function renderBall(num){
+function renderBall(num, live=true){
   G.calledSet.add(num);
   const c = colOf(num);
   const big=$('#bigBall');
   big.style.setProperty('--c','var('+BALL_COLORS[c]+')');
   $('#bigNum').textContent=num; $('#bigBall .col').textContent=COLS[c];
-  if(!reduceMotion){ big.classList.remove('pop'); void big.offsetWidth; big.classList.add('pop'); }
-  speak(COLS[c]+' '+num);
+  if(!reduceMotion && live){ big.classList.remove('pop'); void big.offsetWidth; big.classList.add('pop'); }
+  if(live) speak(COLS[c]+' '+num);
 
   const rb=$('#recentBalls');
   const mini=document.createElement('div'); mini.className='ball'; mini.style.setProperty('--c','var('+BALL_COLORS[c]+')');
   mini.innerHTML='<span class="inner">'+num+'</span>';
-  rb.prepend(mini); while(rb.children.length>6) rb.lastChild.remove();
+  rb.prepend(mini); while(rb.children.length>8) rb.lastChild.remove();
   $('#callCount').textContent=(G.idx+1)+'/75';
 
   const pi = dabNumber(G.card, G.dabbed, num);
@@ -2279,6 +2357,8 @@ function renderBall(num){
     const cell = $(`.cell[data-i="${pi}"]`);
     setCellDab(cell, pi);
     if(!reduceMotion){ cell.classList.remove('pop'); void cell.offsetWidth; cell.classList.add('pop'); }
+    // a clear "that one's on your card" cue so it never feels like nothing hits
+    if(live){ const rc=cell.getBoundingClientRect(); floaty('✓ '+num, rc.left+rc.width/2-18, rc.top+4); big.classList.add('mine'); setTimeout(()=>big.classList.remove('mine'),700); }
     checkPlayerLines();
   }
   const ev = evaluateClaim(G.dabbed, G.mode);
@@ -2373,7 +2453,7 @@ function mpLoop(){
   // never advance the shared draw until the server clock is known
   if(!skewReady){ G.mpTimer=setTimeout(mpLoop, 120); return; }
   const count = Math.max(0, Math.min(75, Math.floor((serverNow()-G.startedAt)/G.interval)+1));
-  while(G.idx < count-1 && !G.over){ G.idx++; renderBall(G.sequence[G.idx]); }
+  while(G.idx < count-1 && !G.over){ G.idx++; renderBall(G.sequence[G.idx], G.idx===count-1); }
   const p = progress(G.dabbed, G.mode);
   if(p!==G._lastProg){ G._lastProg=p; roomRef.child('progress/'+save.uid).set({p, name:save.handle, face:save.avatar}); }
   if(G.idx>=74){
@@ -2481,7 +2561,15 @@ $('#quitGame').addEventListener('click', ()=>{
    in a browser secure context (https / localhost). STUN handles most NATs; some
    mobile/cellular networks need a TURN relay (not provisioned on the free tier).
    ============================================================================ */
-const RTC_CFG={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]};
+// STUN discovers your address; TURN relays audio when a phone's NAT blocks a
+// direct peer link (common on cellular). openrelay is a free public TURN.
+const RTC_CFG={iceServers:[
+  {urls:'stun:stun.l.google.com:19302'},
+  {urls:'stun:stun1.l.google.com:19302'},
+  {urls:'turn:openrelay.metered.ca:80', username:'openrelayproject', credential:'openrelayproject'},
+  {urls:'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject'},
+  {urls:'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject'}
+]};
 let voiceOn=false, voiceMuted=false, localStream=null, peers={}, sigCb=null, peersCb=null;
 const voiceRoot = () => roomRef && roomRef.child('rtc');
 const canVoice = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.RTCPeerConnection);
@@ -2517,7 +2605,8 @@ function makePC(uid, name){
   pc.onicecandidate=e=>{ if(e.candidate) sendSignal(uid,{type:'candidate', candidate:e.candidate.toJSON()}); };
   pc.ontrack=e=>attachRemoteAudio(uid, e.streams[0]);
   pc.onconnectionstatechange=setVoiceUI;
-  peers[uid]={pc, name};
+  pc.oniceconnectionstatechange=()=>{ if(pc.iceConnectionState==='failed'){ try{ pc.restartIce(); }catch(e){} } };
+  peers[uid]={pc, name, pending:[]};   // pending = ICE candidates that arrive before remoteDescription
   return pc;
 }
 function ensurePeer(uid, name){
@@ -2533,18 +2622,26 @@ function ensurePeer(uid, name){
 async function handleSignal(sig){
   const uid=sig.from;
   if(!peers[uid]) makePC(uid, sig.name);
-  const pc=peers[uid].pc;
+  const entry=peers[uid]; const pc=entry.pc;
   try{
     if(sig.type==='offer'){
       await pc.setRemoteDescription({type:'offer', sdp:sig.sdp});
+      await drainCandidates(entry);
       await pc.setLocalDescription(await pc.createAnswer());
       sendSignal(uid,{type:'answer', sdp:pc.localDescription.sdp});
     } else if(sig.type==='answer'){
       await pc.setRemoteDescription({type:'answer', sdp:sig.sdp});
+      await drainCandidates(entry);
     } else if(sig.type==='candidate'){
-      await pc.addIceCandidate(sig.candidate);
+      // candidates can arrive before the offer/answer is applied - queue until then
+      if(pc.remoteDescription && pc.remoteDescription.type){ await pc.addIceCandidate(sig.candidate); }
+      else entry.pending.push(sig.candidate);
     }
   }catch(e){ console.warn('signal handling failed', sig.type, e); }
+}
+async function drainCandidates(entry){
+  const q=entry.pending; entry.pending=[];
+  for(const c of q){ try{ await entry.pc.addIceCandidate(c); }catch(e){} }
 }
 function sendSignal(toUid, data){
   const rt=voiceRoot(); if(rt) rt.child('signals/'+toUid).push(Object.assign({from:save.uid, name:save.handle}, data));
@@ -2553,6 +2650,7 @@ function attachRemoteAudio(uid, stream){
   let el=document.getElementById('aud-'+uid);
   if(!el){ el=document.createElement('audio'); el.id='aud-'+uid; el.autoplay=true; el.setAttribute('playsinline',''); document.body.appendChild(el); }
   el.srcObject=stream;
+  el.play().catch(()=>{});   // iOS Safari needs an explicit play() even with autoplay
 }
 function closePeer(uid){
   const p=peers[uid]; if(!p) return;
