@@ -1337,20 +1337,29 @@ $('#playNow').addEventListener('click', enterApp);   // guest (anonymous)
 
 /* real sign-in: Google + Apple. Signing in swaps the anonymous session for a
    stable account uid, so the same identity + profile follow you across devices. */
+function makeProvider(kind){
+  if(kind==='google') return new firebase.auth.GoogleAuthProvider();
+  const p = new firebase.auth.OAuthProvider('apple.com'); p.addScope('name'); p.addScope('email'); return p;
+}
 async function signInProvider(kind){
   if(!window.firebase || !firebase.auth){ toast('Sign-in unavailable offline','bad'); return; }
-  let provider;
-  if(kind==='google'){ provider = new firebase.auth.GoogleAuthProvider(); }
-  else { provider = new firebase.auth.OAuthProvider('apple.com'); provider.addScope('name'); provider.addScope('email'); }
-  // redirect (not popup) — reliable on iOS and inside an installed home-screen app.
-  // the page navigates out to the provider and returns via getRedirectResult on load.
+  const provider = makeProvider(kind);
+  // Popup is the reliable path (redirect breaks on iOS because the auth handler
+  // is on a different domain and Safari partitions its storage). Fall back to
+  // redirect only if popups are blocked; getRedirectResult() finishes that on return.
   try{
-    toast('Opening sign-in…','');
-    await firebase.auth().signInWithRedirect(provider);
+    await firebase.auth().signInWithPopup(provider);
+    await loadProfile();
+    enterApp();
   }catch(e){
-    console.warn('sign-in start failed', e && e.code, e && e.message);
-    if(e && e.code==='auth/operation-not-allowed') toast('That sign-in isn’t enabled yet','bad');
-    else toast('Couldn’t start sign-in','bad');
+    const code = e && e.code;
+    console.warn('popup sign-in failed', code, e && e.message);
+    if(code==='auth/popup-closed-by-user' || code==='auth/cancelled-popup-request') return;   // user backed out
+    if(code==='auth/operation-not-allowed'){ toast('That sign-in isn’t enabled yet','bad'); return; }
+    if(code==='auth/popup-blocked' || code==='auth/operation-not-supported-in-this-environment' || code==='auth/web-storage-unsupported'){
+      try{ await firebase.auth().signInWithRedirect(provider); return; }catch(e2){ console.warn('redirect start failed', e2 && e2.code); toast('Couldn’t start sign-in','bad'); return; }
+    }
+    toast('Sign-in failed. Try again','bad');
   }
 }
 $('#googleBtn').addEventListener('click', ()=>signInProvider('google'));
