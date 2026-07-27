@@ -624,7 +624,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 <div id="app">
 
   <!-- ============ LOGIN ============ -->
-  <section id="login" class="screen active">
+  <section id="login" class="screen">
     <div class="ambient" id="ambient"></div>
     <div class="streak"></div>
     <div class="hero">
@@ -2735,9 +2735,13 @@ function handleShop(key,item){
    ============================================================================ */
 buildAmbient();
 $('#homeTokVal').textContent = save.tokens;
-// If already onboarded from a previous session, still start at the login hero
-// (it's the signature moment) - Play now jumps straight home.
 refreshAvatars();
+// Route synchronously from the cached profile so a refresh never flashes the
+// login screen and then "auto-logs in" (which read as a bug). Returning users
+// (signed in, or an onboarded guest) land straight on home; auth restores and
+// presence/feeds start in the background. Genuinely new users see the login hero.
+if(save.onboarded && save.handle){ goHome(); }
+else { show('login'); }
 </script>
 </body>
 </html>
