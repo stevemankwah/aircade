@@ -1464,7 +1464,7 @@ function buildAmbient(){
   }
 }
 function enterApp(){
-  if(save.onboarded){ goHome(); }
+  if(save.onboarded){ goHome(); consumePendingJoin(); }
   else { buildAvatarPicker(); $('#handleInput').value=save.handle||''; show('onboard'); }
 }
 $('#playNow').addEventListener('click', enterApp);   // guest (anonymous)
@@ -1524,6 +1524,7 @@ $('#finishOnboard').addEventListener('click', ()=>{
   persist();
   saveProfile();   // carry this handle to other devices when signed in
   goHome();
+  consumePendingJoin();   // came in from an invite link -> drop them into the room
 });
 
 /* ============================================================================
@@ -1610,6 +1611,14 @@ function buildModePicker(){
    ============================================================================ */
 let playContext = 'solo';   // 'solo' (practice) or 'room' (real multiplayer)
 let currentCode = null, roomRef = null, roomCb = null, roomData = null;
+let pendingJoin = null;     // room code from an invite link, joined once we're in
+/* an invite link lands here: if signed in, join straight away; a brand-new user
+   signs up first and this fires right after onboarding. */
+function consumePendingJoin(){
+  if(!pendingJoin) return;
+  const code = pendingJoin; pendingJoin = null;
+  joinRoomNet(code);   // waits for auth, checks the room exists, opens the lobby
+}
 
 /* keep a short local list of rooms I've created/joined so Home can re-open them */
 function rememberRoom(code, name, game){
@@ -1698,7 +1707,9 @@ async function createRoomNet(name, game){
    or the whole invite message */
 function parseRoomCode(raw){
   const s=(raw||'').trim().toUpperCase();
-  const u=s.match(/JOIN\/([A-Z0-9]+)/);          // ...aircade.gg/join/CODE
+  const q=s.match(/[?&]JOIN=([A-Z0-9]+)/);        // ...?join=CODE (the real app link)
+  if(q) return q[1];
+  const u=s.match(/JOIN\/([A-Z0-9]+)/);          // legacy ...aircade.gg/join/CODE
   if(u) return u[1];
   const c=s.match(/CODE[:\s]*([A-Z0-9]{4,10})/);  // "... Code ABCDE ..."
   if(c) return c[1];
@@ -1818,7 +1829,13 @@ $('#copyRoomLobby').addEventListener('click', ()=>{
   try{ navigator.clipboard.writeText(currentCode); }catch(e){}
   toast('Room code copied','good');
 });
-const roomInviteText = () => `Join me on Aircade 🎮  Room “${(roomData&&roomData.meta&&roomData.meta.name)||'my room'}” · Code ${currentCode}  → https://aircade.gg/join/${currentCode}`;
+/* a real, working invite link: opens THIS app with the room code so a tap joins
+   straight away (aircade.gg was a placeholder that 404'd). */
+function appJoinURL(code){
+  const base = location.origin + location.pathname.replace(/[^/]*$/, '');   // strip index.html/bingo.html
+  return base + '?join=' + code;
+}
+const roomInviteText = () => `Join me on Aircade 🎮  Room “${(roomData&&roomData.meta&&roomData.meta.name)||'my room'}” · Code ${currentCode}  → ${appJoinURL(currentCode)}`;
 
 /* file a report on another player -> lands in the backoffice moderation queue */
 function reportPlayer(m){
@@ -1967,7 +1984,7 @@ async function renderInviteCanvas(){
   // ---- join line
   ctx.textAlign='center'; ctx.textBaseline='alphabetic';
   ctx.fillStyle='#8B7EB8'; ctx.font='400 27px "Inter"';
-  ctx.fillText('aircade.gg/join/'+room.code, 540, 1150);
+  ctx.fillText('Tap the invite link · Code '+room.code, 540, 1150);
 
   ctx.fillStyle='rgba(245,241,255,.30)'; ctx.font='600 22px "Inter"';
   drawTracked(ctx,'PLAY CURATED GAMES WITH FRIENDS',540,1240,3);
@@ -2778,11 +2795,22 @@ function handleShop(key,item){
 buildAmbient();
 $('#homeTokVal').textContent = save.tokens;
 refreshAvatars();
+// An invite link (?join=CODE) sets a pending join. Strip it from the URL so a
+// later refresh doesn't force a rejoin, but keep the code to act on below.
+(function(){
+  const raw = new URLSearchParams(location.search).get('join');
+  if(raw){
+    pendingJoin = raw.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,10) || null;
+    try{ history.replaceState(null,'',location.pathname); }catch(e){}
+  }
+})();
 // Route synchronously from the cached profile so a refresh never flashes the
 // login screen and then "auto-logs in" (which read as a bug). Returning users
 // (signed in, or an onboarded guest) land straight on home; auth restores and
 // presence/feeds start in the background. Genuinely new users see the login hero.
-if(save.onboarded && save.handle){ goHome(); }
+// With an invite: signed-in users jump into the room; new users sign up, then
+// consumePendingJoin() fires right after onboarding.
+if(save.onboarded && save.handle){ goHome(); consumePendingJoin(); }
 else { show('login'); }
 </script>
 </body>
