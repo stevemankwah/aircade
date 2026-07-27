@@ -1069,10 +1069,6 @@ try{
   firebase.initializeApp(FB_CONFIG);
   AC = firebase.database().ref('aircade');
   const auth = firebase.auth();
-  // every device gets an anonymous token; the rules require it, so all DB
-  // reads/writes wait until sign-in completes (token-less bots are denied).
-  // start as an anonymous guest; a Google/Apple sign-in later swaps in a stable uid
-  auth.signInAnonymously().catch(e=>console.warn('anon sign-in failed', e));
   auth.onAuthStateChanged(user=>{
     if(!user) return;
     isGuest = user.isAnonymous;
@@ -1081,9 +1077,18 @@ try{
       AUTH_OK=true; NET_OK=true;
       firebase.database().ref('.info/serverTimeOffset').on('value', s=>{ serverSkew = s.val()||0; });
     }
-    loadProfile();
-    if(save.onboarded && $('#home') && $('#home').classList.contains('active')){ publishPresence(); startHomeFeeds(); }
+    loadProfile().then(()=>{
+      // a real (non-guest) sign-in just completed while on the login screen -> go in
+      if(!isGuest && $('#login') && $('#login').classList.contains('active')){ enterApp(); }
+      else if(save.onboarded && $('#home') && $('#home').classList.contains('active')){ publishPresence(); startHomeFeeds(); }
+    });
   });
+  // finish a returning Google/Apple redirect, then guest-sign-in only if nobody signed in.
+  // rules require a token, so DB ops wait until this settles.
+  auth.getRedirectResult()
+    .catch(e=>{ console.warn('redirect sign-in error', e && e.code, e && e.message);
+                setTimeout(()=>toast('Sign-in didn’t complete. Try again','bad'), 700); })
+    .finally(()=>{ if(!auth.currentUser){ auth.signInAnonymously().catch(e=>console.warn('anon sign-in failed', e)); } });
 }catch(e){ console.warn('Firebase init failed - multiplayer disabled', e); }
 
 /* presence: announce myself online, auto-remove on disconnect */
@@ -1337,16 +1342,15 @@ async function signInProvider(kind){
   let provider;
   if(kind==='google'){ provider = new firebase.auth.GoogleAuthProvider(); }
   else { provider = new firebase.auth.OAuthProvider('apple.com'); provider.addScope('name'); provider.addScope('email'); }
+  // redirect (not popup) — reliable on iOS and inside an installed home-screen app.
+  // the page navigates out to the provider and returns via getRedirectResult on load.
   try{
-    await firebase.auth().signInWithPopup(provider);   // onAuthStateChanged sets save.uid + isGuest=false
-    await loadProfile();                                // pull handle/avatar if this account has them
-    enterApp();                                         // home if onboarded, else pick a handle
+    toast('Opening sign-in…','');
+    await firebase.auth().signInWithRedirect(provider);
   }catch(e){
-    console.warn('sign-in failed', e && e.code, e && e.message);
-    if(e && (e.code==='auth/popup-closed-by-user' || e.code==='auth/cancelled-popup-request')) return;  // user backed out
+    console.warn('sign-in start failed', e && e.code, e && e.message);
     if(e && e.code==='auth/operation-not-allowed') toast('That sign-in isn’t enabled yet','bad');
-    else if(e && e.code==='auth/popup-blocked') toast('Allow popups to sign in','bad');
-    else toast('Sign-in failed. Try again','bad');
+    else toast('Couldn’t start sign-in','bad');
   }
 }
 $('#googleBtn').addEventListener('click', ()=>signInProvider('google'));
