@@ -553,6 +553,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
   padding:7px 16px;font-weight:800;font-family:var(--font-display);font-size:13px;flex:none;transition:transform .12s var(--pop),background .2s,color .2s}
 .follow-btn:active{transform:scale(.94)}
 .follow-btn.on{background:var(--mint);color:#053a28;border-color:transparent}
+.follow-btn.sm{padding:5px 11px;font-size:11px;border-width:1.5px}
 
 .feed-card{display:flex;gap:11px;padding:13px 2px;border-bottom:1px solid var(--line)}
 .feed-card:last-child{border-bottom:0}
@@ -795,6 +796,22 @@ button{font-family:inherit;cursor:pointer;color:inherit}
       <div id="memberList"></div>
     </div>
 
+    <div class="voicebar muted" id="roomVoicebar" style="margin-bottom:16px">
+      <button class="pill on" id="roomVoiceJoin">🎙️ Join table voice</button>
+      <div class="wave" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+      <span class="small muted" id="roomVoiceStatus">off</span>
+      <button class="icon-btn" id="roomVoiceMute" style="display:none" aria-label="Mute mic">🎙️</button>
+    </div>
+
+    <div class="panel talk" style="margin-bottom:16px">
+      <p class="section-t">Table talk</p>
+      <div class="msgs" id="roomTalkMsgs"></div>
+      <form class="talkform" id="roomTalkForm">
+        <input id="roomTalkInput" maxlength="120" placeholder="Say gg…" autocomplete="off" />
+        <button class="btn small purple" type="submit">Send</button>
+      </form>
+    </div>
+
     <div class="room-dock">
       <button class="btn ghost" id="readyToggle">I’m ready</button>
       <button class="btn green" id="roomPlay" disabled>Start ▸</button>
@@ -923,6 +940,11 @@ button{font-family:inherit;cursor:pointer;color:inherit}
     <div class="panel mt">
       <p class="section-t">Friends scoreboard</p>
       <div id="sbList"></div>
+    </div>
+
+    <div class="panel mt">
+      <p class="section-t">Players online</p>
+      <div id="onlineList"></div>
     </div>
 
     <div class="panel mt">
@@ -1123,6 +1145,42 @@ function subscribeServerState(){
   AC.child('announcement').on('value', s=>{ renderAnnouncement((s.val()||{}).text || ''); });
   // my own sanction status
   AC.child('moderation/'+save.uid).on('value', s=>{ myModeration = s.val(); applyModeration(); });
+  subscribeFollows();
+}
+
+/* ---- follow graph (real, denormalized: follows/{me}/{target} + followers/{target}/{me}) ---- */
+let myFollows={}, myFollowersCount=0, followSubbed=false;
+function subscribeFollows(){
+  if(!NET_OK || followSubbed) return; followSubbed=true;
+  AC.child('follows/'+save.uid).on('value', s=>{
+    myFollows = s.val() || {};
+    renderFollowCounts();
+    if($('#profile') && $('#profile').classList.contains('active')){ buildOnlineList(); buildFollowingList(); }
+    if($('#room') && $('#room').classList.contains('active') && !G.mpActive) renderLobby();
+  });
+  AC.child('followers/'+save.uid).on('value', s=>{
+    myFollowersCount = s.exists() ? Object.keys(s.val()).length : 0;
+    renderFollowCounts();
+  });
+}
+function renderFollowCounts(){
+  if($('#profFollowers')) $('#profFollowers').textContent = myFollowersCount;
+  if($('#profFollowing')) $('#profFollowing').textContent = Object.keys(myFollows).length;
+}
+function isFollowing(uid){ return !!myFollows[uid]; }
+function toggleFollow(target){
+  if(!NET_OK){ toast('No connection','bad'); return; }
+  if(!target || target.uid===save.uid) return;
+  const meRef = AC.child('follows/'+save.uid+'/'+target.uid);
+  const themRef = AC.child('followers/'+target.uid+'/'+save.uid);
+  if(isFollowing(target.uid)){
+    meRef.remove(); themRef.remove();
+    toast('Unfollowed '+(target.handle||'player'),'');
+  } else {
+    meRef.set({at:TS(), handle:target.handle||'Player', face:target.face||'🎮', verify:target.verify||'none', ring:target.ring||'ring_none'});
+    themRef.set({at:TS(), handle:save.handle, face:save.avatar});
+    toast('Following '+(target.handle||'player'),'good');
+  }
 }
 function renderAnnouncement(text){
   const el=$('#annBanner'); if(!el) return;
@@ -1650,7 +1708,7 @@ async function joinRoomNet(rawCode){
 }
 
 /* ---- live room lobby (subscribes to the room in RTDB) ---- */
-function detachRoom(){ if(roomRef&&roomCb) roomRef.off('value', roomCb); roomRef=null; roomCb=null; }
+function detachRoom(){ detachChat(); if(typeof leaveVoice==='function') leaveVoice(); if(roomRef&&roomCb) roomRef.off('value', roomCb); roomRef=null; roomCb=null; }
 function membersArr(){
   const m=(roomData&&roomData.members)||{};
   return Object.keys(m).map(uid=>Object.assign({uid}, m[uid]));
@@ -1666,6 +1724,7 @@ function openRoomLobby(code){
   detachRoom();
   currentCode = code; playContext = 'room'; G.mpActive=false; G.over=false;  // fresh lobby, not a finished game
   roomRef = AC.child('rooms/'+code);
+  attachChat();
   renderLobbyShell(code);
   roomCb = roomRef.on('value', snap=>{
     roomData = snap.val();
@@ -1710,9 +1769,11 @@ function renderLobby(){
         <div class="m-name">${escapeHtml(m.name||'Player')}${verifyMark(m.verify,true)}${isHost?'<span class="host-tag">Host</span>':''}</div>
         <div class="m-sub">${isYou?'You':'Joined'}</div>
       </div>
+      ${isYou?'':`<button class="follow-btn sm ${isFollowing(m.uid)?'on':''}">${isFollowing(m.uid)?'Following':'Follow'}</button>`}
       ${isYou?'':'<button class="rep-btn" title="Report" aria-label="Report player">⚑</button>'}
       <span class="ready-pill ${m.ready?'yes':'no'}">${m.ready?'Ready':'Not ready'}</span>`;
     const rb=row.querySelector('.rep-btn'); if(rb) rb.addEventListener('click',()=>reportPlayer(m));
+    const fb=row.querySelector('.follow-btn'); if(fb) fb.addEventListener('click',()=>toggleFollow({uid:m.uid, handle:m.name||'Player', face:m.face||'🎮', verify:m.verify||'none', ring:m.ring||'ring_none'}));
     wrap.appendChild(row);
   });
   const me=mem.find(m=>m.uid===save.uid);
@@ -2022,39 +2083,53 @@ function openProfile(){
   if(save.verify && save.verify!=='none') tags.push(capitalize(save.verify)+' verified');
   if(save.equipped.ring && save.equipped.ring!=='ring_none') tags.push('Ring owner');
   $('#profTag').textContent = tags.length ? tags.join(' · ') : 'Player';
-  const others = onlinePlayers().filter(p=>p.uid!==save.uid).length;
-  $('#profFollowers').textContent = others;
-  $('#profFollowing').textContent = others;
+  renderFollowCounts();
   $('#profGames').textContent  = save.record.wins + save.record.losses;
   $('#profWins2').textContent  = save.record.wins;
   $('#profLosses').textContent = save.record.losses;
   $('#profStreak').textContent = save.streak;
   $('#profTokChip').textContent = save.tokens;
   hidePanelOf('#sbList'); hidePanelOf('#feedList');    // no fabricated leaderboard / feed
-  relabelPanel('#followList','Players online');
   buildOnlineList();
+  buildFollowingList();
   show('profile');
 }
+/* a person row with a follow/unfollow button (online list + following list) */
+function personRow(p, opts){
+  const ra=ringAttrs(p.ring); const following = !!myFollows[p.uid]; const isMe = p.uid===save.uid;
+  const row=document.createElement('div'); row.className='follow-row';
+  row.innerHTML=`
+    <div class="avatar${ra.cls}" data-verify="${p.verify||'none'}" style="width:46px;height:46px;${ra.style}">
+      <div class="face-c" style="font-size:23px">${p.face||p.avatar||'🎮'}</div>
+      ${opts&&opts.online?'<span class="pdot online"></span>':''}
+    </div>
+    <div class="meta">
+      <div class="fn">${escapeHtml(p.name||p.handle||'Player')}${verifyMark(p.verify,true)}</div>
+      <div class="fs status-txt ${opts&&opts.online?'online':''}">${opts&&opts.online?'<span class="d"></span>Online':'Following'}</div>
+    </div>
+    ${isMe?'':`<button class="follow-btn ${following?'on':''}">${following?'Following':'Follow'}</button>`}`;
+  const btn=row.querySelector('.follow-btn');
+  if(btn) btn.addEventListener('click',()=>toggleFollow({uid:p.uid, handle:p.name||p.handle||'Player', face:p.face||p.avatar||'🎮', verify:p.verify||'none', ring:p.ring||'ring_none'}));
+  return row;
+}
 function buildOnlineList(){
-  const wrap=$('#followList'); if(!wrap) return; wrap.innerHTML='';
+  const wrap=$('#onlineList'); if(!wrap) return; wrap.innerHTML='';
   const others=onlinePlayers().filter(p=>p.uid!==save.uid);
   if(!others.length){
     wrap.innerHTML='<div class="small muted">No one else online right now. Share your link and create a room to play with a friend.</div>';
     return;
   }
-  others.slice(0,20).forEach(p=>{
-    const row=document.createElement('div'); row.className='follow-row'; const ra=ringAttrs(p.ring);
-    row.innerHTML=`
-      <div class="avatar${ra.cls}" data-verify="${p.verify||'none'}" style="width:46px;height:46px;${ra.style}">
-        <div class="face-c" style="font-size:23px">${p.face||'🎮'}</div>
-        <span class="pdot online"></span>
-      </div>
-      <div class="meta">
-        <div class="fn">${escapeHtml(p.name||'Player')}${verifyMark(p.verify,true)}</div>
-        <div class="fs status-txt online"><span class="d"></span>Online</div>
-      </div>`;
-    wrap.appendChild(row);
-  });
+  others.slice(0,20).forEach(p=>wrap.appendChild(personRow(p,{online:true})));
+}
+function buildFollowingList(){
+  const wrap=$('#followList'); if(!wrap) return; wrap.innerHTML='';
+  const list=Object.keys(myFollows).map(uid=>Object.assign({uid}, myFollows[uid]))
+                   .sort((a,b)=>(b.at||0)-(a.at||0));
+  if(!list.length){
+    wrap.innerHTML='<div class="small muted">You’re not following anyone yet. Tap Follow on a player to add them here.</div>';
+    return;
+  }
+  list.forEach(p=>wrap.appendChild(personRow(p,{online:false})));
 }
 
 $('#homeWho').addEventListener('click', openProfile);
@@ -2342,13 +2417,130 @@ $('#quitGame').addEventListener('click', ()=>{
   else openGameView('bingo');
 });
 
-/* voice mute toggle (cosmetic + local speech) */
-$('#muteBtn').addEventListener('click', ()=>{
-  G.muted=!G.muted;
-  $('#voicebar').classList.toggle('muted', G.muted);
-  $('#muteBtn').textContent = G.muted ? '🔇' : '🔊';
-  if(G.muted && 'speechSynthesis' in window) speechSynthesis.cancel();
-});
+/* ============================================================================
+   TABLE VOICE  -  real WebRTC audio mesh, signaled over Firebase (rooms/{code}/rtc)
+   Everyone who joins connects peer-to-peer to everyone else in the room. Works
+   in a browser secure context (https / localhost). STUN handles most NATs; some
+   mobile/cellular networks need a TURN relay (not provisioned on the free tier).
+   ============================================================================ */
+const RTC_CFG={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]};
+let voiceOn=false, voiceMuted=false, localStream=null, peers={}, sigCb=null, peersCb=null;
+const voiceRoot = () => roomRef && roomRef.child('rtc');
+const canVoice = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.RTCPeerConnection);
+
+async function joinVoice(){
+  if(voiceOn || !roomRef) return;
+  if(!canVoice()){ toast('Voice needs a secure connection','bad'); return; }
+  if(isSanctioned()){ toast('You can’t use voice right now','bad'); return; }
+  try{ localStream = await navigator.mediaDevices.getUserMedia({audio:true, video:false}); }
+  catch(e){ toast('Allow mic access to join voice','bad'); return; }
+  voiceOn=true; voiceMuted=false;
+  const rt=voiceRoot();
+  rt.child('peers/'+save.uid).set({name:save.handle, at:TS()});
+  rt.child('peers/'+save.uid).onDisconnect().remove();
+  rt.child('signals/'+save.uid).onDisconnect().remove();
+  // inbound signals addressed to me
+  sigCb = rt.child('signals/'+save.uid).on('child_added', async snap=>{
+    const sig=snap.val(); snap.ref.remove();
+    if(sig && sig.from!==save.uid) await handleSignal(sig);
+  });
+  // who's in voice -> connect to them, drop those who left
+  peersCb = rt.child('peers').on('value', s=>{
+    const set=s.val()||{};
+    Object.keys(set).forEach(uid=>{ if(uid!==save.uid) ensurePeer(uid, set[uid].name); });
+    Object.keys(peers).forEach(uid=>{ if(!set[uid]) closePeer(uid); });
+    setVoiceUI();
+  });
+  setVoiceUI();
+}
+function makePC(uid, name){
+  const pc=new RTCPeerConnection(RTC_CFG);
+  localStream.getTracks().forEach(t=>pc.addTrack(t, localStream));
+  pc.onicecandidate=e=>{ if(e.candidate) sendSignal(uid,{type:'candidate', candidate:e.candidate.toJSON()}); };
+  pc.ontrack=e=>attachRemoteAudio(uid, e.streams[0]);
+  pc.onconnectionstatechange=setVoiceUI;
+  peers[uid]={pc, name};
+  return pc;
+}
+function ensurePeer(uid, name){
+  if(peers[uid]) return;
+  const pc=makePC(uid, name);
+  if(save.uid < uid){   // deterministic offerer avoids glare (smaller uid offers)
+    (async()=>{ try{
+      await pc.setLocalDescription(await pc.createOffer());
+      sendSignal(uid,{type:'offer', sdp:pc.localDescription.sdp});
+    }catch(e){ console.warn('offer failed',e); } })();
+  }
+}
+async function handleSignal(sig){
+  const uid=sig.from;
+  if(!peers[uid]) makePC(uid, sig.name);
+  const pc=peers[uid].pc;
+  try{
+    if(sig.type==='offer'){
+      await pc.setRemoteDescription({type:'offer', sdp:sig.sdp});
+      await pc.setLocalDescription(await pc.createAnswer());
+      sendSignal(uid,{type:'answer', sdp:pc.localDescription.sdp});
+    } else if(sig.type==='answer'){
+      await pc.setRemoteDescription({type:'answer', sdp:sig.sdp});
+    } else if(sig.type==='candidate'){
+      await pc.addIceCandidate(sig.candidate);
+    }
+  }catch(e){ console.warn('signal handling failed', sig.type, e); }
+}
+function sendSignal(toUid, data){
+  const rt=voiceRoot(); if(rt) rt.child('signals/'+toUid).push(Object.assign({from:save.uid, name:save.handle}, data));
+}
+function attachRemoteAudio(uid, stream){
+  let el=document.getElementById('aud-'+uid);
+  if(!el){ el=document.createElement('audio'); el.id='aud-'+uid; el.autoplay=true; el.setAttribute('playsinline',''); document.body.appendChild(el); }
+  el.srcObject=stream;
+}
+function closePeer(uid){
+  const p=peers[uid]; if(!p) return;
+  try{ p.pc.close(); }catch(e){}
+  const el=document.getElementById('aud-'+uid); if(el) el.remove();
+  delete peers[uid];
+}
+function toggleMute(){
+  if(!voiceOn) return;
+  voiceMuted=!voiceMuted;
+  if(localStream) localStream.getAudioTracks().forEach(t=>t.enabled=!voiceMuted);
+  setVoiceUI();
+}
+function leaveVoice(){
+  if(!voiceOn) return;
+  voiceOn=false;
+  const rt=voiceRoot();
+  if(rt){
+    try{ rt.child('signals/'+save.uid).off('child_added', sigCb); }catch(e){}
+    try{ rt.child('peers').off('value', peersCb); }catch(e){}
+    rt.child('peers/'+save.uid).remove();
+    rt.child('signals/'+save.uid).remove();
+  }
+  Object.keys(peers).forEach(closePeer); peers={};
+  if(localStream){ localStream.getTracks().forEach(t=>t.stop()); localStream=null; }
+  sigCb=null; peersCb=null; voiceMuted=false;
+  setVoiceUI();
+}
+const voiceCount = () => voiceOn ? Object.keys(peers).length+1 : 0;
+function setVoiceUI(){
+  const n=voiceCount();
+  const rj=$('#roomVoiceJoin'), rs=$('#roomVoiceStatus'), rv=$('#roomVoicebar'), rm=$('#roomVoiceMute');
+  if(rj) rj.textContent = voiceOn ? '⏹ Leave voice' : '🎙️ Join table voice';
+  if(rj) rj.classList.toggle('on', !voiceOn);
+  if(rs) rs.textContent = voiceOn ? (n>1 ? n+' in voice' : 'waiting for others…') : 'off';
+  if(rm){ rm.style.display = voiceOn ? '' : 'none'; rm.textContent = voiceMuted?'🔇':'🎙️'; }
+  if(rv) rv.classList.toggle('muted', !voiceOn || voiceMuted);
+  // mirror on the in-game voice bar
+  const gv=$('#voicebar'), mb=$('#muteBtn');
+  if(gv) gv.classList.toggle('muted', !voiceOn || voiceMuted);
+  if(mb) mb.textContent = !voiceOn ? '🎙️' : (voiceMuted?'🔇':'🔊');
+}
+$('#roomVoiceJoin').addEventListener('click', ()=>{ voiceOn ? leaveVoice() : joinVoice(); });
+$('#roomVoiceMute').addEventListener('click', toggleMute);
+/* in-game voice button: join if not in voice, otherwise toggle mute */
+$('#muteBtn').addEventListener('click', ()=>{ if(!voiceOn) joinVoice(); else toggleMute(); });
 
 /* ============================================================================
    TOKENS
@@ -2424,37 +2616,50 @@ function countUp(el, target, dur=800, prefix=''){
   requestAnimationFrame(step);
 }
 
-/* ------------------------- TABLE TALK (real room chat) ------------------- */
-let chatCb=null;
-function detachChat(){ if(chatCb && roomRef){ roomRef.child('chat').off('value', chatCb); } chatCb=null; }
-function buildTalk(kind){
-  const m=$('#talkMsgs'); m.innerHTML='';
-  detachChat();
-  if(playContext!=='room' || !roomRef){
-    m.innerHTML='<div class="small muted">Table talk is for multiplayer rooms.</div>';
-    $('#talkForm').style.display='none';
-    return;
-  }
-  $('#talkForm').style.display='';
+/* ------------------------- TABLE TALK (real room chat) -------------------
+   One chat per room, attached for the whole room session (lobby -> game ->
+   results). Renders into every talk panel currently on screen so friends can
+   banter in the lobby before/after a round, not just on the results card. */
+let chatCb=null, chatMsgs=[];
+const TALK_PANELS=['roomTalkMsgs','talkMsgs'];
+function attachChat(){
+  if(!roomRef || chatCb) return;
   chatCb = roomRef.child('chat').on('value', s=>{
-    const msgs=s.val()||{}; m.innerHTML='';
-    Object.keys(msgs).sort((a,b)=>(msgs[a].at||0)-(msgs[b].at||0)).slice(-20)
-      .forEach(k=>{ const x=msgs[k]; pushMsg(x.face||'🎮', x.name||'Player', x.text||''); });
+    const msgs=s.val()||{};
+    chatMsgs = Object.keys(msgs).sort((a,b)=>(msgs[a].at||0)-(msgs[b].at||0)).slice(-30).map(k=>msgs[k]);
+    renderAllTalk();
   });
 }
-function pushMsg(face, who, text){
-  const m=$('#talkMsgs');
+function detachChat(){ if(chatCb && roomRef){ roomRef.child('chat').off('value', chatCb); } chatCb=null; chatMsgs=[]; }
+function renderAllTalk(){
+  TALK_PANELS.forEach(id=>{
+    const m=document.getElementById(id); if(!m) return;
+    m.innerHTML='';
+    if(!chatMsgs.length){ m.innerHTML='<div class="small muted">No messages yet. Say hi 👋</div>'; return; }
+    chatMsgs.forEach(x=>pushMsgTo(m, x.face||'🎮', x.name||'Player', x.text||''));
+    m.scrollTop=m.scrollHeight;
+  });
+}
+function pushMsgTo(m, face, who, text){
   const el=document.createElement('div'); el.className='msg';
   el.innerHTML=`<div class="ma">${face}</div><div class="mb"><div class="who">${escapeHtml(who)}</div>${escapeHtml(text)}</div>`;
-  m.appendChild(el); m.scrollTop=m.scrollHeight;
+  m.appendChild(el);
+}
+function sendChat(inputEl){
+  const v=inputEl.value.trim(); if(!v) return;
+  inputEl.value='';
+  if(roomRef && !blockedFromChat()) roomRef.child('chat').push({name:save.handle, face:save.avatar, text:v.slice(0,140), at:TS()});
+}
+const blockedFromChat = () => isSanctioned() ? (toast('You can’t chat right now','bad'), true) : false;
+function buildTalk(kind){
+  const inRoom = (playContext==='room' && roomRef);
+  $('#talkForm').style.display = inRoom ? '' : 'none';
+  if(!inRoom){ $('#talkMsgs').innerHTML='<div class="small muted">Table talk is for multiplayer rooms.</div>'; return; }
+  attachChat(); renderAllTalk();
 }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-$('#talkForm').addEventListener('submit', e=>{
-  e.preventDefault();
-  const v=$('#talkInput').value.trim(); if(!v) return;
-  $('#talkInput').value='';
-  if(roomRef) roomRef.child('chat').push({name:save.handle, face:save.avatar, text:v.slice(0,140), at:TS()});
-});
+$('#talkForm').addEventListener('submit', e=>{ e.preventDefault(); sendChat($('#talkInput')); });
+$('#roomTalkForm').addEventListener('submit', e=>{ e.preventDefault(); sendChat($('#roomTalkInput')); });
 
 $('#rematch').addEventListener('click', ()=>{
   detachChat();
