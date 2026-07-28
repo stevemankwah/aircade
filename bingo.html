@@ -489,6 +489,11 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 /* clues (recent calls + rival progress) are blurred; press and hold to peek (hidden) */
 .clue{filter:blur(7px);transition:filter .12s}
 body.peeking .clue{filter:none}
+#missTag{display:inline-block;color:var(--gold);font-weight:800;opacity:.8}
+#missTag.bump{animation:missbump .5s var(--pop)}
+@keyframes missbump{0%{transform:scale(1)}35%{transform:scale(1.16)}100%{transform:scale(1)}}
+.bcard.miss{animation:missglow .65s}
+@keyframes missglow{0%{box-shadow:0 0 0 0 rgba(251,191,36,0)}30%{box-shadow:0 0 0 2px rgba(251,191,36,.5),0 0 20px rgba(251,191,36,.35)}100%{box-shadow:0 0 0 0 rgba(251,191,36,0)}}
 /* Mario-style burst ring when a square dabs */
 .cell.pop::before{content:"";position:absolute;inset:5px;border-radius:50%;z-index:2;pointer-events:none;
   animation:burst .55s var(--ease)}
@@ -932,7 +937,7 @@ button.follow-row:active{transform:scale(.99)}
     <div class="caller">
       <div class="ball bigball" id="bigBall"><span class="inner"><span class="col">·</span><span id="bigNum" style="font-size:26px">?</span></span></div>
       <div class="recent">
-        <div class="rt">Goal: <span id="goalLabel">Line</span> · <span id="callCount">0/75</span></div>
+        <div class="rt">Goal: <span id="goalLabel">Line</span> · <span id="callCount">0/75</span><span id="missTag" style="display:none"></span></div>
         <div class="balls" id="recentBalls"></div>
       </div>
     </div>
@@ -2641,6 +2646,8 @@ function startGame(){
 
 function buildGrid(){
   const g=$('#grid'); g.innerHTML='';
+  G.missed=0; G.lastBall=null;
+  const mt=$('#missTag'); if(mt){ mt.style.display='none'; mt.textContent=''; }
   for(let i=0;i<25;i++){
     const cell=document.createElement('button');
     cell.className='cell'; cell.dataset.i=i;
@@ -2682,6 +2689,14 @@ function setupPeek(){
     ['touchend','touchcancel'].forEach(ev=>z.addEventListener(ev, off));
   });
 }
+/* subtle "you missed one": a soft amber pulse on the card + a quiet running count */
+function flagMiss(){
+  G.missed=(G.missed||0)+1;
+  const t=$('#missTag');
+  if(t){ t.textContent=' · '+G.missed+' missed'; t.style.display=''; t.classList.remove('bump'); void t.offsetWidth; t.classList.add('bump'); }
+  const bc=$('.bcard');
+  if(bc && !reduceMotion){ bc.classList.remove('miss'); void bc.offsetWidth; bc.classList.add('miss'); }
+}
 function setCellDab(cell, i){
   if(G.dabbed[i]){
     cell.classList.add('dabbed');
@@ -2701,6 +2716,13 @@ G.calledSet = new Set();
 
 /* render one drawn ball (shared by solo + multiplayer); assumes G.idx already advanced */
 function renderBall(num, live=true){
+  // the previous ball is about to leave the clear zone. If it was one of MY numbers
+  // and I never tapped it, that's a "missed one" moment (subtle nudge, no penalty).
+  if(live && G.lastBall!=null){
+    const pi = G.card.nums.indexOf(G.lastBall);
+    if(pi>=0 && !G.dabbed[pi]) flagMiss();
+  }
+  G.lastBall = num;
   G.calledSet.add(num);
   const c = colOf(num);
   const big=$('#bigBall');
