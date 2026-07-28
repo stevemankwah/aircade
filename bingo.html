@@ -2438,8 +2438,11 @@ function personRow(p, opts){
       <div class="fs status-txt ${opts&&opts.online?'online':''}">${opts&&opts.online?'Online':'Following'}</div>
     </div>
     ${isMe?'':`<button class="follow-btn ${following?'on':''}">${following?'Following':'Follow'}</button>`}`;
+  const person={uid:p.uid, name:p.name||p.handle||'Player', face:p.face||p.avatar||'🎮', verify:p.verify||'none', ring:p.ring||'ring_none'};
   const btn=row.querySelector('.follow-btn');
-  if(btn) btn.addEventListener('click',()=>toggleFollow({uid:p.uid, handle:p.name||p.handle||'Player', face:p.face||p.avatar||'🎮', verify:p.verify||'none', ring:p.ring||'ring_none'}));
+  if(btn) btn.addEventListener('click',e=>{ e.stopPropagation(); toggleFollow(person); });
+  // tap the row (avatar / name) to open the player sheet -> follow / chat
+  if(!isMe){ row.style.cursor='pointer'; row.addEventListener('click',()=>openPlayerSheet(person)); }
   return row;
 }
 function buildOnlineList(){
