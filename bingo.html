@@ -302,7 +302,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .game-card:active{transform:scale(.97)}
 .game-card.sel{border-color:var(--mint);background:rgba(52,211,153,.1)}
 .game-card.soon{opacity:.72}
-.game-card .ge{font-size:30px;line-height:1}
+.game-card .ge{font-size:30px;line-height:1;margin-top:24px}
 .game-card .gn{font-family:var(--font-display);font-weight:800;font-size:16px;margin-top:8px}
 .game-card .gt{font-size:12px;color:var(--ink-faint);margin-top:1px}
 .game-tag{position:absolute;top:10px;left:10px;font-size:10px;font-weight:800;font-family:var(--font-body);
@@ -352,7 +352,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .shopbtn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line-2);background:var(--card);font-size:19px;flex:none;margin-right:8px;transition:transform .12s var(--pop)}
 .shopbtn:active{transform:scale(.9)}
 .dm-sheet{height:72vh;display:flex;flex-direction:column}
-.dm-msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:7px;margin:6px 0 12px;padding-right:2px}
+.dm-msgs{flex:1;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:7px;margin:6px 0 12px;padding-right:2px}
 .dm-msg{max-width:78%;padding:9px 13px;border-radius:16px;font-size:14px;line-height:1.35;word-break:break-word}
 .dm-msg.them{align-self:flex-start;background:var(--plum-3);border-bottom-left-radius:5px}
 .dm-msg.me{align-self:flex-end;background:var(--mint);color:#053a28;border-bottom-right-radius:5px;font-weight:600}
@@ -561,7 +561,8 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .overlay.dialog{align-items:center;padding:22px}
 .overlay.dialog .sheet{border-radius:24px;max-height:86dvh;padding-bottom:22px}
 .sheet{background:var(--plum-2);border:1px solid var(--line-2);border-radius:26px 26px 0 0;width:100%;max-width:520px;
-  max-height:88dvh;overflow-y:auto;padding:20px 18px calc(24px + var(--safe-b));animation:sheetUp .35s var(--ease)}
+  max-height:88dvh;overflow-y:auto;overscroll-behavior:contain;padding:20px 18px calc(24px + var(--safe-b));animation:sheetUp .35s var(--ease)}
+body.locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 @keyframes sheetUp{from{transform:translateY(40px)}to{transform:none}}
 .sheet-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .sheet-h h2{margin:0;font-size:22px}
@@ -639,6 +640,7 @@ button.follow-row:active{transform:scale(.99)}
   border:2.5px solid var(--card);box-shadow:0 0 0 1px rgba(0,0,0,.25);z-index:3}
 .pdot.online{background:#34D399}
 .pdot.playing{background:#FBBF24}
+.pdot.away{background:#F59E0B}
 .pdot.offline{background:#6b6485}
 /* inline status text with a small dot */
 .status-txt{display:inline-flex;align-items:center;gap:6px}
@@ -1242,7 +1244,7 @@ try{
       // announce presence + subscribe to the online feed as soon as we're signed in,
       // whatever screen we're on (e.g. joined straight into a room from an invite) so
       // friends actually see us on the online board.
-      if(save.onboarded && save.handle){ publishPresence(); startHomeFeeds(); }
+      if(save.onboarded && save.handle){ publishPresence(); startHomeFeeds(); startPresenceHeartbeat(); }
       // a real (non-guest) sign-in just completed while on the login screen -> go in
       if(!isGuest && $('#login') && $('#login').classList.contains('active')){ enterApp(); }
     });
@@ -1337,6 +1339,21 @@ function publishPresence(){
   const ref = AC.child('presence/'+save.uid);
   ref.onDisconnect().remove();
   ref.set({name:save.handle, face:save.avatar, verify:save.verify, ring:effectiveRing(), at:TS()});
+}
+/* heartbeat: refresh my presence timestamp so others keep seeing me as online;
+   it stops while the app is backgrounded, so my `at` goes stale and friends see
+   me as Away, then Offline once the connection actually drops. */
+let hbTimer=null;
+function heartbeat(){ if(NET_OK && save.handle && document.visibilityState==='visible') AC.child('presence/'+save.uid+'/at').set(TS()); }
+function startPresenceHeartbeat(){
+  if(hbTimer) return;
+  hbTimer = setInterval(heartbeat, 25000);
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ publishPresence(); } });
+  // re-render presence-driven views periodically so others' Online -> Away shows without a data change
+  setInterval(()=>{
+    if($('#home') && $('#home').classList.contains('active')) renderCircle();
+    if($('#profile') && $('#profile').classList.contains('active')){ buildOnlineList(); buildFollowingList(); }
+  }, 20000);
 }
 /* my standing on the coins leaderboard (lifetime coins earned + wins) */
 function publishLeaderboard(){
@@ -2336,8 +2353,18 @@ function lbRow(r, rank){
 function onlinePlayers(){
   return Object.keys(homePresence).map(uid=>Object.assign({uid}, homePresence[uid]));
 }
-// same source as the online board, so the sheet + lists never disagree
-const isOnline = uid => uid===save.uid || !!(homePresence && homePresence[uid]);
+// presence status from the same feed as the online board, so nothing disagrees.
+// online = fresh heartbeat, away = connected but heartbeat stale (app backgrounded /
+// weak signal), offline = presence gone (disconnected).
+const AWAY_AFTER = 70000;   // ms without a heartbeat before we call someone away (heartbeat is 25s)
+function presenceStatus(uid){
+  if(uid===save.uid) return 'online';
+  const p = homePresence && homePresence[uid];
+  if(!p) return 'offline';
+  return (serverNow() - (p.at||0) < AWAY_AFTER) ? 'online' : 'away';
+}
+const isOnline = uid => presenceStatus(uid)==='online';
+const STATUS_LABEL = {online:'Online', away:'Away', offline:'Offline'};
 function renderCircle(){
   const row=$('#circleRow'); if(!row) return; row.innerHTML='';
   const others = onlinePlayers().filter(p=>p.uid!==save.uid).slice(0,8);
@@ -2355,14 +2382,14 @@ function renderCircle(){
 /* tap a player (circle / lists) -> name, badge, follow */
 function openPlayerSheet(p){
   if(!p || p.uid===save.uid) return;
-  const ra=ringAttrs(p.ring), online=isOnline(p.uid);
+  const ra=ringAttrs(p.ring), st=presenceStatus(p.uid);
   $('#playerSheetBody').innerHTML=`
     <div class="avatar${ra.cls}" data-verify="${p.verify||'none'}" style="width:78px;height:78px;margin:4px auto 12px;${ra.style}">
       <div class="face-c" style="font-size:40px">${p.face||'🎮'}</div>
-      <span class="pdot ${online?'online':'offline'}" style="width:16px;height:16px"></span>
+      <span class="pdot ${st}" style="width:16px;height:16px"></span>
     </div>
     <div style="font-family:var(--font-display);font-weight:800;font-size:21px;display:flex;justify-content:center;align-items:center;gap:3px">${escapeHtml(p.name||'Player')}${verifyMark(p.verify,true)}</div>
-    <div class="small muted center" style="margin:4px 0 18px">${online?'Online now':'Offline'}</div>
+    <div class="small muted center" style="margin:4px 0 18px">${st==='online'?'Online now':STATUS_LABEL[st]}</div>
     <div style="display:flex;gap:10px">
       <button class="btn" id="playerMsgBtn" style="flex:1"></button>
       <button class="btn" id="playerFollowBtn" style="flex:1"></button>
@@ -2529,16 +2556,16 @@ function openProfile(){
 /* a person row with a follow/unfollow button (online list + following list) */
 function personRow(p, opts){
   const ra=ringAttrs(p.ring); const following = !!myFollows[p.uid]; const isMe = p.uid===save.uid;
-  const online = isOnline(p.uid);
+  const st = presenceStatus(p.uid);
   const row=document.createElement('div'); row.className='follow-row';
   row.innerHTML=`
     <div class="avatar${ra.cls}" data-verify="${p.verify||'none'}" style="width:46px;height:46px;${ra.style}">
       <div class="face-c" style="font-size:23px">${p.face||p.avatar||'🎮'}</div>
-      <span class="pdot ${online?'online':'offline'}"></span>
+      <span class="pdot ${st}"></span>
     </div>
     <div class="meta">
       <div class="fn"><span class="nm-ellipsis">${escapeHtml(p.name||p.handle||'Player')}</span>${verifyMark(p.verify,true)}</div>
-      <div class="fs status-txt ${online?'online':''}">${online?'Online':'Offline'}</div>
+      <div class="fs status-txt ${st==='online'?'online':''}">${STATUS_LABEL[st]}</div>
     </div>
     ${isMe?'':`<button class="follow-btn ${following?'on':''}">${following?'Following':'Follow'}</button>`}`;
   const person={uid:p.uid, name:p.name||p.handle||'Player', face:p.face||p.avatar||'🎮', verify:p.verify||'none', ring:p.ring||'ring_none'};
@@ -3201,6 +3228,17 @@ function handleShop(key,item){
 buildAmbient();
 $('#homeTokVal').textContent = save.tokens;
 refreshAvatars();
+
+/* freeze the page behind any open sheet/overlay so scrolling a chat (or any sheet)
+   never scrolls the background instead. iOS-safe: fix the body + restore scroll. */
+let _lockY=0;
+function syncPageLock(){
+  const open = !!document.querySelector('.overlay.open');
+  const b=document.body;
+  if(open && !b.classList.contains('locked')){ _lockY=window.scrollY; b.style.top=(-_lockY)+'px'; b.classList.add('locked'); }
+  else if(!open && b.classList.contains('locked')){ b.classList.remove('locked'); b.style.top=''; window.scrollTo(0,_lockY); }
+}
+$$('.overlay').forEach(o=> new MutationObserver(syncPageLock).observe(o,{attributes:true,attributeFilter:['class']}) );
 // An invite link (?join=CODE) sets a pending join. Strip it from the URL so a
 // later refresh doesn't force a rejoin, but keep the code to act on below.
 (function(){
