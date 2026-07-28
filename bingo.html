@@ -580,8 +580,10 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .prof-counts .n{font-family:var(--font-display);font-weight:800;font-size:20px}
 .prof-counts .l{font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:1px}
 
-.follow-row{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid var(--line)}
+.follow-row{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid var(--line);width:100%;text-align:left;background:none;border-left:0;border-right:0;border-top:0;color:inherit;font:inherit;outline:none;-webkit-tap-highlight-color:transparent}
 .follow-row:last-child{border-bottom:0}
+button.follow-row{cursor:pointer}
+button.follow-row:active{transform:scale(.99)}
 .follow-row .meta{flex:1;min-width:0}
 .follow-row .fn{font-family:var(--font-display);font-weight:700;font-size:15px;display:flex;align-items:center;gap:4px;min-width:0}
 .follow-row .follow-btn{flex:none}
