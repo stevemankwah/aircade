@@ -1834,6 +1834,7 @@ function buildModePicker(){
    ROOMS  -  create → invite → members → ready-up → anyone starts play
    ============================================================================ */
 let playContext = 'solo';   // 'solo' (practice) or 'room' (real multiplayer)
+const isPractice = () => playContext !== 'room';   // solo practice earns no coins/stats
 let currentCode = null, roomRef = null, roomCb = null, roomData = null;
 let pendingJoin = null;     // room code from an invite link, joined once we're in
 /* an invite link lands here: if signed in, join straight away; a brand-new user
@@ -2754,13 +2755,15 @@ function checkPlayerLines(){
   const grid=$('#grid');
   for(const li of done){
     if(!G.scoredLines.has(li)){
-      G.scoredLines.add(li); G.linesThisGame++;
-      G.earned.lines++; G.earned.lineTokens += EARN.line;
-      addTokens(EARN.line);
-      // floaty near the card
-      const r=grid.getBoundingClientRect();
-      floaty('+'+EARN.line, r.left+r.width/2-14, r.top+r.height/2);
-      toast('Line! +'+EARN.line+' tokens','good');
+      G.scoredLines.add(li); G.linesThisGame++; G.earned.lines++;
+      if(isPractice()){ toast('Line!','good'); }
+      else {
+        G.earned.lineTokens += EARN.line;
+        addTokens(EARN.line);
+        const r=grid.getBoundingClientRect();
+        floaty('+'+EARN.line, r.left+r.width/2-14, r.top+r.height/2);
+        toast('Line! +'+EARN.line+' tokens','good');
+      }
     }
   }
   // highlight winning lines
@@ -2892,13 +2895,9 @@ function playerClaim(){
 
 function endGame(){ G.over=true; G.running=false; clearTimeout(G.tickTimer); clearTimeout(G.mpTimer); }
 
-function playerWins(){    // solo practice win
+function playerWins(){    // solo practice win (no coins, streak, or record: it's practice)
   endGame();
-  G.earned.win = EARN.win; addTokens(EARN.win);
-  save.streak += 1;
-  if(save.streak>=2){ G.earned.streakBonus = EARN.streakStep*Math.min(save.streak,EARN.streakCap); addTokens(G.earned.streakBonus); }
-  save.record.wins += 1;
-  finalizeEarned();
+  finalizeEarned();   // G.earned stays 0 (no rewards in practice)
   persist();
   showResults('win');
 }
@@ -3108,26 +3107,29 @@ function showResults(kind){
   $('#resTokVal').textContent = save.tokens;
   countUp($('#resYouScore'), youScore, 900);
 
-  // token breakdown
+  // token breakdown (practice earns nothing, so say so instead of showing +0s)
   const bd=$('#breakdown'); bd.innerHTML='';
-  const rows=[
-    ['Lines completed ×'+G.earned.lines, G.earned.lineTokens],
-    ['Win bonus', G.earned.win],
-    ['Streak bonus', G.earned.streakBonus],
-    ['Played bonus', G.earned.played],
-  ].filter(r=>r[1]>0 || r[0].startsWith('Lines'));
-  rows.forEach(([label,val])=>{
-    const d=document.createElement('div'); d.className='brow';
-    d.innerHTML=`<span>${label}</span><span class="v" data-count="${val}">+0</span>`;
-    bd.appendChild(d);
-  });
-  const tot=document.createElement('div'); tot.className='brow total';
-  tot.innerHTML=`<span><strong>Total earned</strong></span><span class="v" data-count="${G.earned.total}">+0</span>`;
-  bd.appendChild(tot);
-  // animate counts
-  setTimeout(()=>$$('#breakdown .v').forEach(el=>{
-    const target=+el.dataset.count; countUp(el, target, 700, '+');
-  }), 250);
+  if(isPractice()){
+    bd.innerHTML='<div class="brow"><span class="small muted">Practice round · coins are earned in multiplayer</span></div>';
+  } else {
+    const rows=[
+      ['Lines completed ×'+G.earned.lines, G.earned.lineTokens],
+      ['Win bonus', G.earned.win],
+      ['Streak bonus', G.earned.streakBonus],
+      ['Played bonus', G.earned.played],
+    ].filter(r=>r[1]>0 || r[0].startsWith('Lines'));
+    rows.forEach(([label,val])=>{
+      const d=document.createElement('div'); d.className='brow';
+      d.innerHTML=`<span>${label}</span><span class="v" data-count="${val}">+0</span>`;
+      bd.appendChild(d);
+    });
+    const tot=document.createElement('div'); tot.className='brow total';
+    tot.innerHTML=`<span><strong>Total earned</strong></span><span class="v" data-count="${G.earned.total}">+0</span>`;
+    bd.appendChild(tot);
+    setTimeout(()=>$$('#breakdown .v').forEach(el=>{
+      const target=+el.dataset.count; countUp(el, target, 700, '+');
+    }), 250);
+  }
 
   // record
   $('#recWins').textContent=save.record.wins;
