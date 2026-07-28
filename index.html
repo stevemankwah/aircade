@@ -305,10 +305,16 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .game-card .ge{font-size:30px;line-height:1}
 .game-card .gn{font-family:var(--font-display);font-weight:800;font-size:16px;margin-top:8px}
 .game-card .gt{font-size:12px;color:var(--ink-faint);margin-top:1px}
-.game-tag{position:absolute;top:10px;right:10px;font-size:10px;font-weight:800;font-family:var(--font-body);
+.game-tag{position:absolute;top:10px;left:10px;font-size:10px;font-weight:800;font-family:var(--font-body);
   padding:3px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.5px}
 .game-tag.live{background:var(--mint);color:#053a28}
 .game-tag.soon{background:var(--card-2);color:var(--ink-faint)}
+.game-info{position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;border:1.6px solid var(--line-2);
+  background:rgba(10,6,22,.35);color:var(--ink-dim);display:grid;place-items:center;font-family:var(--font-display);
+  font-weight:800;font-style:italic;font-size:13px;cursor:pointer;z-index:2;transition:transform .14s var(--pop),background .2s,color .2s,border-color .2s}
+.game-info:hover{background:var(--mint);color:#053a28;border-color:transparent}
+.game-info:active{transform:scale(.9)}
+.game-info:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
 
 /* game detail · play-now screen */
 .gv-hero{display:flex;align-items:center;gap:16px;margin:8px 0 14px}
@@ -354,6 +360,27 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 #dmInbox .fs{display:flex;min-width:0}
 .dm-open{flex:none;color:var(--faint);font-size:22px;font-weight:700}
 .btn.danger{background:var(--coral);color:#3a0d16;box-shadow:0 3px 0 0 #c14b5c}
+/* game rules sheet */
+.sheet .close{position:absolute;top:16px;right:16px;width:34px;height:34px;border-radius:50%;border:1px solid var(--line-2);background:transparent;color:var(--ink-dim);font-size:15px;cursor:pointer;z-index:2}
+.sheet .close:active{transform:scale(.92)}
+.rl-head{display:flex;align-items:center;gap:13px;margin-bottom:2px;padding-right:34px}
+.rl-ic{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;font-size:29px;flex:none;background:var(--acc-soft);border:1px solid var(--acc-line)}
+.rl-head h3{margin:0;font-family:var(--font-display);font-weight:800;font-size:22px}
+.rl-head .sub{font-size:12.5px;color:var(--ink-faint);margin-top:1px}
+.rl-blurb{color:var(--ink-dim);font-size:13.5px;line-height:1.5;margin:14px 2px 4px}
+.rl-lab{font-family:var(--font-display);font-weight:800;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint);margin:20px 2px 11px;display:flex;align-items:center;gap:7px}
+.rl-lab::after{content:"";flex:1;height:1px;background:var(--line)}
+.rl-steps{display:flex;flex-direction:column;gap:11px;margin:0;padding:0;list-style:none}
+.rl-steps li{display:flex;gap:12px;align-items:flex-start}
+.rl-steps .n{width:24px;height:24px;border-radius:8px;flex:none;display:grid;place-items:center;font-family:var(--font-display);font-weight:800;font-size:13px;color:#12081f;background:var(--acc)}
+.rl-steps p{margin:2px 0 0;font-size:13.5px;line-height:1.45}
+.rl-facts{display:flex;flex-direction:column;gap:9px;margin-top:6px}
+.rl-fact{display:flex;gap:10px;align-items:flex-start;background:var(--plum-3);border:1px solid var(--line);border-radius:14px;padding:12px 13px}
+.rl-fact .ft{font-family:var(--font-display);font-weight:800;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint)}
+.rl-fact .fv{font-size:13.5px;line-height:1.42;margin-top:2px}
+.rl-badge{font-family:var(--font-body);font-weight:800;font-size:10px;letter-spacing:.5px;text-transform:uppercase;padding:3px 9px;border-radius:999px;flex:none}
+.rl-badge.live{background:var(--mint);color:#053a28}
+.rl-badge.soon{background:var(--card-2);color:var(--ink-faint)}
 .pill.danger{border-color:var(--coral);color:var(--coral)}
 .room-item:active{transform:scale(.98)}
 .room-item .ri-emoji{width:44px;height:44px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;
@@ -1109,6 +1136,14 @@ button.follow-row:active{transform:scale(.99)}
   </div>
 </div>
 
+<!-- ============ GAME RULES (ⓘ on each game card) ============ -->
+<div class="overlay" id="rulesOverlay">
+  <div class="sheet">
+    <button class="close" id="closeRules" aria-label="Close">✕</button>
+    <div id="rulesBody"></div>
+  </div>
+</div>
+
 <!-- game dock (only visible in game) -->
 <div class="dock" id="dock" style="display:none">
   <div class="inner">
@@ -1647,30 +1682,89 @@ function goHome(){
 
 /* curated games on the Aircade platform - Bingo is live, more coming */
 const GAMES = [
-  {id:'bingo',  name:'Bingo',  emoji:'🎱', tag:'75-ball', ready:true,
-   blurb:'Classic 75-ball bingo with friends. Numbers auto-dab your card. Complete a line or full house and call BINGO before anyone else in the room.'},
-  {id:'darts',  name:'Darts',  emoji:'🎯', tag:'501',    ready:false,
-   blurb:'Race from 501 to zero, checking out on a double. Turn-based darts against your friends.'},
-  {id:'trivia', name:'Trivia', emoji:'🧠', tag:'Quiz',   ready:false,
-   blurb:'Fast head-to-head trivia across dozens of categories. Answer quickest to steal the points.'},
-  {id:'match',  name:'Match',  emoji:'🃏', tag:'Memory', ready:false,
-   blurb:'Flip and match pairs against the clock. Simple to learn, brutal to master with friends.'},
+  {id:'bingo',  name:'Bingo',  emoji:'🎱', tag:'75-ball', ready:true, acc:'#FBBF24',
+   blurb:'Classic 75-ball bingo with friends. Numbers auto-dab your card. Complete a line or full house and call BINGO before anyone else in the room.',
+   how:['Everyone gets a random 5×5 card with a free centre space.',
+        'Numbers are called one at a time and auto-dab on your card when you have them.',
+        'Complete a full line (row, column, or diagonal), or the whole card for a full house.',
+        'Hit BINGO the instant you finish the pattern.'],
+   goal:'Be the first in the room to make a line (or a full house).',
+   tip:'Cards are random, so most called numbers won’t be on yours. That’s normal, so hold on.'},
+  {id:'darts',  name:'Darts',  emoji:'🎯', tag:'501',    ready:false, acc:'#FB7185',
+   blurb:'Race from 501 to zero, checking out on a double. Turn-based darts against your friends.',
+   how:['Everyone starts on 501 points.',
+        'Take turns throwing three darts; each throw subtracts from your total.',
+        'You must finish exactly on zero by landing on a double.',
+        'Go below zero or miss the double and the turn doesn’t count.'],
+   goal:'First player to land exactly on zero wins.',
+   tip:'Leave yourself an even number so you can check out on a double.'},
+  {id:'trivia', name:'Trivia', emoji:'🧠', tag:'Quiz',   ready:false, acc:'#A78BFA',
+   blurb:'Fast head-to-head trivia across dozens of categories. Answer quickest to steal the points.',
+   how:['A question appears for everyone at the same time.',
+        'Everyone answers at once, and the fastest correct answer takes the points.',
+        'A wrong answer scores nothing, so don’t just guess.',
+        'Play runs a set number of rounds.'],
+   goal:'Most points when the round ends wins.',
+   tip:'Speed counts as much as knowing it, so lock in the moment you’re sure.'},
+  {id:'match',  name:'Match',  emoji:'🃏', tag:'Memory', ready:false, acc:'#3B82F6',
+   blurb:'Flip and match pairs against the clock. Simple to learn, brutal to master with friends.',
+   how:['A grid of face-down cards. On your turn, flip two.',
+        'Match a pair and they stay up; miss and both flip back over.',
+        'Everyone sees the misses, so memory is the whole game.',
+        'Race the clock and the rest of the room.'],
+   goal:'Clear the most pairs before time runs out.',
+   tip:'Track where the misses were. The win is in remembering, not luck.'},
 ];
 function buildGames(){
   const grid=$('#gameGrid'); grid.innerHTML='';
   GAMES.forEach(g=>{
     const live=isGameLive(g.id);
-    const card=document.createElement('button');
-    card.className='game-card'+(live?'':' soon');
+    const card=document.createElement('div');
+    card.className='game-card'+(live?'':' soon'); card.setAttribute('role','button'); card.tabIndex=0;
     card.innerHTML=`
       <span class="game-tag ${live?'live':'soon'}">${live?'Live':'Soon'}</span>
+      <button class="game-info" aria-label="How to play ${g.name}">i</button>
       <div class="ge">${g.emoji}</div>
       <div class="gn">${g.name}</div>
       <div class="gt">${g.tag}${live?' · live':' · soon'}</div>`;
     card.addEventListener('click',()=>openGameView(g.id));
+    card.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); openGameView(g.id); }});
+    card.querySelector('.game-info').addEventListener('click',e=>{ e.stopPropagation(); openRules(g.id); });
     grid.appendChild(card);
   });
 }
+/* rules sheet (opened by the ⓘ on a game card) */
+function openRules(id){
+  const g=GAMES.find(x=>x.id===id); if(!g) return;
+  const live=isGameLive(g.id);
+  const sheet=$('#rulesOverlay .sheet');
+  sheet.style.setProperty('--acc', g.acc);
+  sheet.style.setProperty('--acc-soft', g.acc+'22');
+  sheet.style.setProperty('--acc-line', g.acc+'55');
+  $('#rulesBody').innerHTML=`
+    <div class="rl-head">
+      <div class="rl-ic">${g.emoji}</div>
+      <div style="flex:1;min-width:0">
+        <h3>${escapeHtml(g.name)}</h3>
+        <div class="sub">${escapeHtml(g.tag)} · play with friends</div>
+      </div>
+      <span class="rl-badge ${live?'live':'soon'}">${live?'Live':'Soon'}</span>
+    </div>
+    <p class="rl-blurb">${escapeHtml(g.blurb)}</p>
+    <div class="rl-lab">How to play</div>
+    <ol class="rl-steps">${g.how.map((s,i)=>`<li><span class="n">${i+1}</span><p>${escapeHtml(s)}</p></li>`).join('')}</ol>
+    <div class="rl-lab">Good to know</div>
+    <div class="rl-facts">
+      <div class="rl-fact"><span>🏆</span><div><div class="ft">How you win</div><div class="fv">${escapeHtml(g.goal)}</div></div></div>
+      <div class="rl-fact"><span>💡</span><div><div class="ft">Tip</div><div class="fv">${escapeHtml(g.tip)}</div></div></div>
+    </div>
+    <button class="btn ${live?'green':'ghost'}" id="rulesCta" style="width:100%;margin-top:20px">${live?'Play now ▸':'Notify me when it’s live'}</button>`;
+  $('#rulesCta').addEventListener('click',()=>{ closeRules(); if(live) openGameView(g.id); else toast('We’ll tell you when '+g.name+' is live','good'); });
+  $('#rulesOverlay').classList.add('open');
+}
+function closeRules(){ $('#rulesOverlay').classList.remove('open'); }
+$('#closeRules').addEventListener('click', closeRules);
+$('#rulesOverlay').addEventListener('click', e=>{ if(e.target.id==='rulesOverlay') closeRules(); });
 
 /* game detail · play-now screen - every card loads here */
 function openGameView(id){
