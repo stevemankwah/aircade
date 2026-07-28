@@ -342,6 +342,8 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .lb-coins{flex:none;font-family:var(--font-display);font-weight:800;font-size:14px;color:var(--gold)}
 .lb-you{font-family:var(--font-body);font-size:9px;font-weight:800;color:var(--mint);background:rgba(52,211,153,.16);border-radius:6px;padding:1px 6px;letter-spacing:.5px}
 .lb-sep{text-align:center;color:var(--faint);padding:2px 0;letter-spacing:3px}
+.shopbtn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line-2);background:var(--card);font-size:19px;flex:none;margin-right:8px;transition:transform .12s var(--pop)}
+.shopbtn:active{transform:scale(.9)}
 .pill.danger{border-color:var(--coral);color:var(--coral)}
 .room-item:active{transform:scale(.98)}
 .room-item .ri-emoji{width:44px;height:44px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;
@@ -722,6 +724,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
         </div>
       </div>
       <div class="spacer"></div>
+      <button class="shopbtn" id="openShopHome" aria-label="Open shop">🛍️</button>
       <div class="tokchip" id="homeTokens"><span class="c"></span><span id="homeTokVal">0</span></div>
     </div>
 
@@ -754,12 +757,6 @@ button{font-family:inherit;cursor:pointer;color:inherit}
       <div id="liveList"></div>
     </div>
 
-    <div class="panel" id="lbPanel" style="margin-bottom:16px">
-      <p class="section-t">🏆 Leaderboard · coins earned</p>
-      <div id="lbList"></div>
-    </div>
-
-    <button class="btn ghost" id="openShopHome">🛍️ Open shop</button>
   </section>
 
   <!-- ============ GAME DETAIL · PLAY NOW ============ -->
@@ -946,6 +943,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
       <button class="icon-btn" id="profBack" aria-label="Back">‹</button>
       <h2 style="margin:0;font-size:22px">Profile</h2>
       <div class="spacer"></div>
+      <button class="shopbtn" id="profShop" aria-label="Open shop">🛍️</button>
       <div class="tokchip" style="padding:5px 10px;font-size:13px"><span class="c" style="width:14px;height:14px"></span><span id="profTokChip">0</span></div>
     </div>
 
@@ -971,8 +969,8 @@ button{font-family:inherit;cursor:pointer;color:inherit}
     </div>
 
     <div class="panel mt">
-      <p class="section-t">Friends scoreboard</p>
-      <div id="sbList"></div>
+      <p class="section-t">🏆 Leaderboard · coins earned</p>
+      <div id="lbList"></div>
     </div>
 
     <div class="panel mt">
@@ -990,7 +988,6 @@ button{font-family:inherit;cursor:pointer;color:inherit}
       <div id="feedList"></div>
     </div>
 
-    <button class="btn ghost mt" id="profShop" style="margin-top:16px">🛍️ Open shop</button>
   </section>
 
 </div>
@@ -2269,7 +2266,9 @@ function openProfile(){
   $('#profLosses').textContent = save.record.losses;
   $('#profStreak').textContent = save.streak;
   $('#profTokChip').textContent = save.tokens;
-  hidePanelOf('#sbList'); hidePanelOf('#feedList');    // no fabricated leaderboard / feed
+  hidePanelOf('#feedList');            // no fabricated activity feed
+  publishLeaderboard();                // refresh my standing
+  renderLeaderboard();                 // the coins leaderboard now lives on the profile
   buildOnlineList();
   buildFollowingList();
   show('profile');
@@ -2285,7 +2284,7 @@ function personRow(p, opts){
     </div>
     <div class="meta">
       <div class="fn"><span class="nm-ellipsis">${escapeHtml(p.name||p.handle||'Player')}</span>${verifyMark(p.verify,true)}</div>
-      <div class="fs status-txt ${opts&&opts.online?'online':''}">${opts&&opts.online?'<span class="d"></span>Online':'Following'}</div>
+      <div class="fs status-txt ${opts&&opts.online?'online':''}">${opts&&opts.online?'Online':'Following'}</div>
     </div>
     ${isMe?'':`<button class="follow-btn ${following?'on':''}">${following?'Following':'Follow'}</button>`}`;
   const btn=row.querySelector('.follow-btn');
