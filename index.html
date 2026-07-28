@@ -331,6 +331,17 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .room-item .ri-x:active{transform:scale(.9)}
 .host-controls{display:flex;gap:8px;margin:-6px 0 16px}
 .ball.bigball.mine{box-shadow:0 0 0 4px var(--mint),0 0 26px 2px var(--mint)}
+.lb-row{display:flex;align-items:center;gap:11px;width:100%;padding:9px 6px;border-bottom:1px solid var(--line);text-align:left;background:none;cursor:pointer}
+.lb-row:last-child{border-bottom:0}
+.lb-row.me{background:rgba(52,211,153,.09);border-radius:12px;border-bottom-color:transparent;cursor:default}
+.lb-row:not(.me):active{transform:scale(.99)}
+.lb-rank{width:30px;flex:none;text-align:center;font-family:var(--font-display);font-weight:800;font-size:15px;color:var(--ink-faint)}
+.lb-meta{flex:1;min-width:0}
+.lb-name{font-family:var(--font-display);font-weight:700;font-size:15px;display:flex;align-items:center;gap:4px;min-width:0}
+.lb-sub{font-size:11px;color:var(--ink-faint)}
+.lb-coins{flex:none;font-family:var(--font-display);font-weight:800;font-size:14px;color:var(--gold)}
+.lb-you{font-family:var(--font-body);font-size:9px;font-weight:800;color:var(--mint);background:rgba(52,211,153,.16);border-radius:6px;padding:1px 6px;letter-spacing:.5px}
+.lb-sep{text-align:center;color:var(--faint);padding:2px 0;letter-spacing:3px}
 .pill.danger{border-color:var(--coral);color:var(--coral)}
 .room-item:active{transform:scale(.98)}
 .room-item .ri-emoji{width:44px;height:44px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;
@@ -743,6 +754,11 @@ button{font-family:inherit;cursor:pointer;color:inherit}
       <div id="liveList"></div>
     </div>
 
+    <div class="panel" id="lbPanel" style="margin-bottom:16px">
+      <p class="section-t">🏆 Leaderboard · coins earned</p>
+      <div id="lbList"></div>
+    </div>
+
     <button class="btn ghost" id="openShopHome">🛍️ Open shop</button>
   </section>
 
@@ -1096,7 +1112,7 @@ const FREE = 12; // center index
 const SAVE_KEY = 'bingo.save.v2';   // v2: verification off by default, rings are earned/bought
 const defaultSave = () => ({
   handle:'', avatar:'🦊', onboarded:false,
-  tokens:100, streak:0, record:{wins:0, losses:0},
+  tokens:100, earnedTotal:100, streak:0, record:{wins:0, losses:0},
   owned:['frame_none','ring_none','dab_coral'],
   equipped:{frame:'frame_none', ring:'ring_none', dab:'dab_coral'},
   verify:'none', creator:false,   // granted later via a backoffice, not by default
@@ -1106,7 +1122,7 @@ const defaultSave = () => ({
 });
 let save = load();
 function load(){
-  try{ const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if(s&&s.equipped) return Object.assign(defaultSave(), s); }
+  try{ const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if(s&&s.equipped){ const m=Object.assign(defaultSave(), s); if(s.earnedTotal==null) m.earnedTotal=s.tokens||0; return m; } }
   catch(e){}
   return defaultSave();
 }
@@ -1236,6 +1252,14 @@ function publishPresence(){
   const ref = AC.child('presence/'+save.uid);
   ref.onDisconnect().remove();
   ref.set({name:save.handle, face:save.avatar, verify:save.verify, ring:effectiveRing(), at:TS()});
+}
+/* my standing on the coins leaderboard (lifetime coins earned + wins) */
+function publishLeaderboard(){
+  if(!NET_OK || !save.handle) return;
+  AC.child('leaderboard/'+save.uid).set({
+    name:save.handle, face:save.avatar, verify:save.verify, ring:effectiveRing(),
+    earned: save.earnedTotal||0, wins: save.record.wins||0, at:TS()
+  });
 }
 
 /* cross-device profile: signed-in users carry their handle + avatar between devices */
@@ -1561,7 +1585,8 @@ $('#finishOnboard').addEventListener('click', ()=>{
 function goHome(){
   refreshAvatars();
   publishPresence();     // announce I'm online (real presence)
-  startHomeFeeds();      // live who's-online + open-rooms
+  publishLeaderboard();  // keep my coins-earned standing current
+  startHomeFeeds();      // live who's-online + open-rooms + leaderboard
   $('#homeName').innerHTML = escapeHtml(save.handle) + verifyMark(save.verify);
   $('#homeSub').textContent = 'Win streak · '+save.streak+' 🔥';
   $('#homeTokVal').textContent = save.tokens;
@@ -2129,11 +2154,36 @@ $('#openShopHome').addEventListener('click', openShop);
    PROFILE  (verification on the name; creator ring on the avatar)
    ============================================================================ */
 /* ---- real presence + open-rooms feeds (Home) ---- */
-let homePresence={}, homeRooms={}, feedsStarted=false;
+let homePresence={}, homeRooms={}, lbData={}, feedsStarted=false;
 function startHomeFeeds(){
   if(!NET_OK || feedsStarted) return; feedsStarted=true;
   AC.child('presence').on('value', s=>{ homePresence=s.val()||{}; renderCircle(); });
   AC.child('rooms').on('value', s=>{ homeRooms=s.val()||{}; renderLive(); });
+  AC.child('leaderboard').on('value', s=>{ lbData=s.val()||{}; renderLeaderboard(); });
+}
+function renderLeaderboard(){
+  const wrap=$('#lbList'); if(!wrap) return;
+  const rows=Object.keys(lbData).map(uid=>Object.assign({uid}, lbData[uid])).sort((a,b)=>(b.earned||0)-(a.earned||0));
+  if(!rows.length){ wrap.innerHTML='<div class="small muted">No scores yet. Play a game to get on the board.</div>'; return; }
+  const myRank=rows.findIndex(r=>r.uid===save.uid);
+  wrap.innerHTML='';
+  rows.slice(0,20).forEach((r,i)=>wrap.appendChild(lbRow(r,i+1)));
+  if(myRank>=20){ const sep=document.createElement('div'); sep.className='lb-sep'; sep.textContent='···'; wrap.appendChild(sep); wrap.appendChild(lbRow(rows[myRank], myRank+1)); }
+}
+function lbRow(r, rank){
+  const you=r.uid===save.uid, ra=ringAttrs(r.ring);
+  const medal = rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':('#'+rank);
+  const row=document.createElement(you?'div':'button'); row.className='lb-row'+(you?' me':'');
+  row.innerHTML=`
+    <div class="lb-rank">${medal}</div>
+    <div class="avatar${ra.cls}" data-verify="${r.verify||'none'}" style="width:38px;height:38px;${ra.style}"><div class="face-c" style="font-size:19px">${r.face||'🎮'}</div></div>
+    <div class="lb-meta">
+      <div class="lb-name"><span class="nm-ellipsis">${escapeHtml(r.name||'Player')}</span>${verifyMark(r.verify,true)}${you?'<span class="lb-you">YOU</span>':''}</div>
+      <div class="lb-sub">${r.wins||0} wins</div>
+    </div>
+    <div class="lb-coins">🪙 ${r.earned||0}</div>`;
+  if(!you) row.addEventListener('click',()=>openPlayerSheet(r));
+  return row;
 }
 function onlinePlayers(){
   return Object.keys(homePresence).map(uid=>Object.assign({uid}, homePresence[uid]));
@@ -2703,6 +2753,7 @@ $('#muteBtn').addEventListener('click', ()=>{ if(!voiceOn) joinVoice(); else tog
    ============================================================================ */
 function addTokens(n){
   save.tokens = Math.max(0, save.tokens + n);
+  if(n>0) save.earnedTotal = (save.earnedTotal||0) + n;   // lifetime earned never drops when you spend
   persist();
   $('#homeTokVal').textContent = save.tokens;
   $('#gameTokVal').textContent = save.tokens;
@@ -2713,6 +2764,7 @@ function addTokens(n){
    RESULTS
    ============================================================================ */
 function showResults(kind){
+  publishLeaderboard();   // push my new coins-earned/wins to the board right away
   const banner=$('#banner'), title=$('#bannerTitle'), sub=$('#bannerSub');
   banner.className='banner '+(kind==='win'?'win':kind==='lose'?'lose':'draw');
   const inRoom = (playContext==='room');
