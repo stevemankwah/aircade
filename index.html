@@ -1210,7 +1210,7 @@ const defaultSave = () => ({
   equipped:{frame:'frame_none', ring:'ring_none', dab:'dab_coral'},
   verify:'none', creator:false,   // granted later via a backoffice, not by default
   followers:0, follows:{},
-  uid:'',
+  uid:'', provider:'guest',   // 'guest' | 'google' | 'apple' - which sign-in you last used
   rooms:[]
 });
 let save = load();
@@ -1241,6 +1241,7 @@ try{
   firebase.initializeApp(FB_CONFIG);
   AC = firebase.database().ref('aircade');
   const auth = firebase.auth();
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e=>console.warn('persistence', e && e.code));  // keep the session across restarts
   auth.onAuthStateChanged(user=>{
     if(!user) return;
     isGuest = user.isAnonymous;
@@ -1264,7 +1265,16 @@ try{
   auth.getRedirectResult()
     .catch(e=>{ console.warn('redirect sign-in error', e && e.code, e && e.message);
                 setTimeout(()=>toast('Sign-in didn’t complete. Try again','bad'), 700); })
-    .finally(()=>{ if(!auth.currentUser){ auth.signInAnonymously().catch(e=>console.warn('anon sign-in failed', e)); } });
+    .finally(()=>{
+      if(auth.currentUser) return;   // session restored (or a fresh sign-in) -> stay signed in
+      if(save.provider && save.provider!=='guest'){
+        // A signed-in account's session was dropped (iOS Safari/PWA can clear storage).
+        // Don't silently turn them into a new guest and lose their account: ask them to sign in again.
+        isGuest=true; show('login'); setTimeout(()=>toast('Please sign in again to continue',''), 500);
+      } else {
+        auth.signInAnonymously().catch(e=>console.warn('anon sign-in failed', e));
+      }
+    });
 }catch(e){ console.warn('Firebase init failed - multiplayer disabled', e); }
 
 /* ---- server-controlled state (set from the backoffice) ---- */
@@ -1631,7 +1641,11 @@ function enterApp(){
   if(save.onboarded){ goHome(); consumePendingJoin(); }
   else { buildAvatarPicker(); $('#handleInput').value=save.handle||''; show('onboard'); }
 }
-$('#playNow').addEventListener('click', enterApp);   // guest (anonymous)
+$('#playNow').addEventListener('click', async ()=>{   // guest (anonymous)
+  save.provider='guest'; persist();
+  try{ if(window.firebase && firebase.auth && !firebase.auth().currentUser){ await firebase.auth().signInAnonymously(); } }catch(e){ console.warn('anon start failed', e && e.code); }
+  enterApp();
+});
 
 /* real sign-in: Google + Apple. Signing in swaps the anonymous session for a
    stable account uid, so the same identity + profile follow you across devices. */
@@ -1647,6 +1661,7 @@ async function signInProvider(kind){
   // redirect only if popups are blocked; getRedirectResult() finishes that on return.
   try{
     await firebase.auth().signInWithPopup(provider);
+    save.provider = kind; persist();   // remember this is a real account
     await loadProfile();
     enterApp();
   }catch(e){
