@@ -484,6 +484,11 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .cell.dabbed span{position:relative;z-index:1;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4)}
 .cell.pop::after{animation:dabpop .45s var(--pop)}
 @keyframes dabpop{0%{transform:scale(0)}60%{transform:scale(1.18)}100%{transform:scale(1)}}
+.cell.wrong{animation:cellshake .4s}
+@keyframes cellshake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+/* clues (recent calls + rival progress) are blurred; press and hold to peek (hidden) */
+.clue{filter:blur(7px);transition:filter .12s}
+body.peeking .clue{filter:none}
 /* Mario-style burst ring when a square dabs */
 .cell.pop::before{content:"";position:absolute;inset:5px;border-radius:50%;z-index:2;pointer-events:none;
   animation:burst .55s var(--ease)}
@@ -2642,15 +2647,40 @@ function buildGrid(){
     if(i===FREE){ cell.classList.add('free','dabbed'); cell.innerHTML='<span>FREE</span>'; }
     else { cell.innerHTML='<span>'+G.card.nums[i]+'</span>'; }
     setCellDab(cell, i);
-    // manual dab is confirmatory only (auto-dab already marks called numbers)
+    // manual dab: you mark your own card. Tapping a called number dabs it; an
+    // uncalled number is rejected (no auto-dab, and no marking ahead of the call).
     cell.addEventListener('click', ()=>{
-      if(i===FREE) return;
+      if(i===FREE || G.over || G.dabbed[i]) return;
       const n=G.card.nums[i];
-      if(G.calledSet && G.calledSet.has(n)) { /* already auto-dabbed */ }
-      else toast('Not called yet','bad');
+      if(G.calledSet && G.calledSet.has(n)){
+        G.dabbed[i]=true; setCellDab(cell, i);
+        if(!reduceMotion){ cell.classList.remove('pop'); void cell.offsetWidth; cell.classList.add('pop'); }
+        checkPlayerLines();
+        const ev = evaluateClaim(G.dabbed, G.mode);
+        $('#callBingo').classList.toggle('armed', ev.valid && !G.over);
+      } else {
+        cell.classList.remove('wrong'); void cell.offsetWidth; cell.classList.add('wrong');
+        toast('Not called yet','bad');
+      }
     });
     g.appendChild(cell);
   }
+}
+/* Blur the clues (recent calls + rival progress) and let a player PRESS AND HOLD
+   to peek. It's an unlabeled cheat: no on-screen hint, players discover it. */
+function setupPeek(){
+  const clues=[$('#recentBalls'), $('#oppPct'), $('#oppBlock') && $('#oppBlock').querySelector('.bar')].filter(Boolean);
+  clues.forEach(el=>el.classList.add('clue'));
+  const zones=[$('#recentBalls'), $('#oppBlock')].filter(Boolean);
+  const on=()=>document.body.classList.add('peeking');
+  const off=()=>document.body.classList.remove('peeking');
+  zones.forEach(z=>{
+    z.style.cursor='default';
+    z.addEventListener('pointerdown', on);
+    ['pointerup','pointercancel','pointerleave'].forEach(ev=>z.addEventListener(ev, off));
+    z.addEventListener('touchstart', on, {passive:true});
+    ['touchend','touchcancel'].forEach(ev=>z.addEventListener(ev, off));
+  });
 }
 function setCellDab(cell, i){
   if(G.dabbed[i]){
@@ -2684,18 +2714,7 @@ function renderBall(num, live=true){
   mini.innerHTML='<span class="inner">'+num+'</span>';
   rb.prepend(mini); while(rb.children.length>8) rb.lastChild.remove();
   $('#callCount').textContent=(G.idx+1)+'/75';
-
-  const pi = dabNumber(G.card, G.dabbed, num);
-  if(pi>=0){
-    const cell = $(`.cell[data-i="${pi}"]`);
-    setCellDab(cell, pi);
-    if(!reduceMotion){ cell.classList.remove('pop'); void cell.offsetWidth; cell.classList.add('pop'); }
-    // a clear "that one's on your card" cue so it never feels like nothing hits
-    if(live){ const rc=cell.getBoundingClientRect(); floaty('✓ '+num, rc.left+rc.width/2-18, rc.top+4); big.classList.add('mine'); setTimeout(()=>big.classList.remove('mine'),700); }
-    checkPlayerLines();
-  }
-  const ev = evaluateClaim(G.dabbed, G.mode);
-  $('#callBingo').classList.toggle('armed', ev.valid && !G.over);
+  // NO auto-dab: the player taps the number on their own card (see buildGrid).
 }
 
 /* SOLO caller tick */
@@ -3239,6 +3258,7 @@ function syncPageLock(){
   else if(!open && b.classList.contains('locked')){ b.classList.remove('locked'); b.style.top=''; window.scrollTo(0,_lockY); }
 }
 $$('.overlay').forEach(o=> new MutationObserver(syncPageLock).observe(o,{attributes:true,attributeFilter:['class']}) );
+setupPeek();
 // An invite link (?join=CODE) sets a pending join. Strip it from the URL so a
 // later refresh doesn't force a rejoin, but keep the code to act on below.
 (function(){
