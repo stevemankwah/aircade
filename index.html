@@ -331,15 +331,16 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .room-item .ri-x:active{transform:scale(.9)}
 .host-controls{display:flex;gap:8px;margin:-6px 0 16px}
 .ball.bigball.mine{box-shadow:0 0 0 4px var(--mint),0 0 26px 2px var(--mint)}
-.lb-row{display:flex;align-items:center;gap:11px;width:100%;padding:9px 6px;border-bottom:1px solid var(--line);text-align:left;background:none;cursor:pointer}
-.lb-row:last-child{border-bottom:0}
-.lb-row.me{background:rgba(52,211,153,.09);border-radius:12px;border-bottom-color:transparent;cursor:default}
+.lb-row{display:flex;align-items:center;gap:11px;width:100%;padding:10px 8px;border:0;border-radius:12px;text-align:left;background:none;cursor:pointer;outline:none;-webkit-tap-highlight-color:transparent}
+.lb-row+.lb-row{margin-top:2px}
+.lb-row.me{background:rgba(52,211,153,.1);cursor:default}
 .lb-row:not(.me):active{transform:scale(.99)}
-.lb-rank{width:30px;flex:none;text-align:center;font-family:var(--font-display);font-weight:800;font-size:15px;color:var(--ink-faint)}
+.lb-rank{width:26px;flex:none;text-align:center;font-family:var(--font-display);font-weight:800;font-size:14px;color:var(--ink-faint)}
 .lb-meta{flex:1;min-width:0}
-.lb-name{font-family:var(--font-display);font-weight:700;font-size:15px;display:flex;align-items:center;gap:4px;min-width:0}
-.lb-sub{font-size:11px;color:var(--ink-faint)}
-.lb-coins{flex:none;font-family:var(--font-display);font-weight:800;font-size:14px;color:var(--gold)}
+.lb-name{font-family:var(--font-display);font-weight:700;font-size:15px;display:flex;align-items:center;gap:5px;min-width:0}
+.lb-sub{font-size:11px;color:var(--ink-faint);margin-top:1px}
+.lb-coins{flex:none;display:flex;align-items:center;gap:5px;font-family:var(--font-display);font-weight:800;font-size:14px;color:var(--gold)}
+.coin{width:16px;height:16px;border-radius:50%;flex:none;background:radial-gradient(circle at 35% 30%,#FFE79A,#F2B008 60%,#B97F05);box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
 .lb-you{font-family:var(--font-body);font-size:9px;font-weight:800;color:var(--mint);background:rgba(52,211,153,.16);border-radius:6px;padding:1px 6px;letter-spacing:.5px}
 .lb-sep{text-align:center;color:var(--faint);padding:2px 0;letter-spacing:3px}
 .shopbtn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line-2);background:var(--card);font-size:19px;flex:none;margin-right:8px;transition:transform .12s var(--pop)}
@@ -475,7 +476,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
   50%{box-shadow:0 5px 0 0 var(--lip),0 12px 30px 0 rgba(244,63,124,1)}}
 
 /* toast */
-.toast{position:fixed;left:50%;top:22px;transform:translateX(-50%) translateY(-24px);z-index:60;
+.toast{position:fixed;left:50%;top:22px;transform:translateX(-50%) translateY(-24px);z-index:200;
   background:var(--card-2);border:1px solid var(--line-2);border-radius:14px;padding:12px 18px;
   font-weight:700;opacity:0;transition:.35s var(--ease);pointer-events:none;box-shadow:var(--shadow);max-width:90%;text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -530,6 +531,8 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .overlay{position:fixed;inset:0;z-index:80;background:rgba(8,4,20,.7);backdrop-filter:blur(4px);
   display:none;align-items:flex-end;justify-content:center}
 .overlay.open{display:flex;animation:fadeIn .25s}
+.overlay.dialog{align-items:center;padding:22px}
+.overlay.dialog .sheet{border-radius:24px;max-height:86dvh;padding-bottom:22px}
 .sheet{background:var(--plum-2);border:1px solid var(--line-2);border-radius:26px 26px 0 0;width:100%;max-width:520px;
   max-height:88dvh;overflow-y:auto;padding:20px 18px calc(24px + var(--safe-b));animation:sheetUp .35s var(--ease)}
 @keyframes sheetUp{from{transform:translateY(40px)}to{transform:none}}
@@ -541,7 +544,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .item .prev{width:52px;height:52px;margin:0 auto 8px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   font-size:22px;background:linear-gradient(135deg,#3a2c66,#5a3f9e);position:relative}
 .item .nm{font-size:12px;font-weight:600;margin-bottom:6px;height:28px;display:flex;align-items:center;justify-content:center}
-.item .cost{font-family:var(--font-display);font-weight:800;font-size:13px;color:var(--gold)}
+.item .cost{font-family:var(--font-display);font-weight:800;font-size:13px;color:var(--gold);display:flex;align-items:center;justify-content:center;gap:5px}
 .item.owned{border-color:var(--line-2)}
 .item.equipped{border-color:var(--mint);background:rgba(52,211,153,.08)}
 .item .buy{margin-top:6px;font-size:12px;padding:7px;border-radius:10px;width:100%;background:var(--card-2);border:none;font-weight:800;
@@ -1064,7 +1067,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 </div>
 
 <!-- ============ PLAYER SHEET (tap a player -> name + follow + message) ============ -->
-<div class="overlay" id="playerOverlay">
+<div class="overlay dialog" id="playerOverlay">
   <div class="sheet" style="text-align:center;max-width:340px">
     <div class="sheet-h">
       <h2 style="font-size:18px">Player</h2>
@@ -1075,7 +1078,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 </div>
 
 <!-- ============ ASK (in-app confirm / prompt; native dialogs are blocked in the iOS PWA) ============ -->
-<div class="overlay" id="askOverlay">
+<div class="overlay dialog" id="askOverlay">
   <div class="sheet" style="max-width:360px">
     <div class="sheet-h"><h2 id="askTitle" style="font-size:17px;margin:0">Confirm</h2><button class="icon-btn" id="askClose" aria-label="Close">✕</button></div>
     <input class="field" id="askInput" style="display:none;margin-bottom:14px" maxlength="120" autocomplete="off" />
@@ -2217,7 +2220,7 @@ function renderLeaderboard(){
 }
 function lbRow(r, rank){
   const you=r.uid===save.uid, ra=ringAttrs(r.ring);
-  const medal = rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':('#'+rank);
+  const medal = rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':rank;
   const row=document.createElement(you?'div':'button'); row.className='lb-row'+(you?' me':'');
   row.innerHTML=`
     <div class="lb-rank">${medal}</div>
@@ -2226,7 +2229,7 @@ function lbRow(r, rank){
       <div class="lb-name"><span class="nm-ellipsis">${escapeHtml(r.name||'Player')}</span>${verifyMark(r.verify,true)}${you?'<span class="lb-you">YOU</span>':''}</div>
       <div class="lb-sub">${r.wins||0} wins</div>
     </div>
-    <div class="lb-coins">🪙 ${r.earned||0}</div>`;
+    <div class="lb-coins"><span class="coin"></span>${(r.earned||0).toLocaleString()}</div>`;
   if(!you) row.addEventListener('click',()=>openPlayerSheet(r));
   return row;
 }
@@ -3052,7 +3055,7 @@ function buildShop(){
       card.innerHTML = `
         <div class="prev">${shopPreview(key,item)}</div>
         <div class="nm">${item.name}</div>
-        ${equipped?'<div class="cost">Equipped</div>':owned?'<div class="cost">Owned</div>':`<div class="cost">🪙 ${item.cost}</div>`}
+        ${equipped?'<div class="cost">Equipped</div>':owned?'<div class="cost">Owned</div>':`<div class="cost"><span class="coin"></span>${item.cost.toLocaleString()}</div>`}
         <button class="buy">${equipped?'✓ On':owned?'Equip':'Buy'}</button>`;
       card.querySelector('.buy').addEventListener('click',()=>handleShop(key,item));
       grid.appendChild(card);
