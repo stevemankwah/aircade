@@ -280,7 +280,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .roomcode{display:flex;align-items:center;justify-content:space-between;gap:10px;
   background:var(--plum-3);border:1px dashed var(--line-2);border-radius:var(--r-md);padding:14px 16px}
 .roomcode .code{font-family:var(--font-display);font-weight:800;font-size:22px;letter-spacing:2px;color:var(--mint);white-space:nowrap}
-.circle-row{display:flex;gap:12px;margin-top:4px;overflow-x:auto;padding-bottom:2px}
+.circle-row{display:flex;gap:12px;margin-top:4px;overflow-x:auto;padding:6px 2px 8px}
 .circle-row .av2{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   font-size:22px;background:linear-gradient(135deg,#3a2c66,#5a3f9e);border:2px solid rgba(255,255,255,.1)}
 .cav{display:flex;flex-direction:column;align-items:center;gap:5px;width:52px;flex:none;background:none;border:0;padding:0;cursor:pointer}
@@ -352,6 +352,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .dm-empty{margin:auto;color:var(--ink-faint);font-size:13px;text-align:center;padding:20px}
 #dmInbox .fs{display:flex;min-width:0}
 .dm-open{flex:none;color:var(--faint);font-size:22px;font-weight:700}
+.btn.danger{background:var(--coral);color:#3a0d16;box-shadow:0 3px 0 0 #c14b5c}
 .pill.danger{border-color:var(--coral);color:var(--coral)}
 .room-item:active{transform:scale(.98)}
 .room-item .ri-emoji{width:44px;height:44px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;
@@ -1070,6 +1071,18 @@ button{font-family:inherit;cursor:pointer;color:inherit}
       <button class="icon-btn" id="closePlayer" aria-label="Close">✕</button>
     </div>
     <div id="playerSheetBody"></div>
+  </div>
+</div>
+
+<!-- ============ ASK (in-app confirm / prompt; native dialogs are blocked in the iOS PWA) ============ -->
+<div class="overlay" id="askOverlay">
+  <div class="sheet" style="max-width:360px">
+    <div class="sheet-h"><h2 id="askTitle" style="font-size:17px;margin:0">Confirm</h2><button class="icon-btn" id="askClose" aria-label="Close">✕</button></div>
+    <input class="field" id="askInput" style="display:none;margin-bottom:14px" maxlength="120" autocomplete="off" />
+    <div style="display:flex;gap:10px">
+      <button class="btn ghost" id="askCancel" style="flex:1">Cancel</button>
+      <button class="btn green" id="askOk" style="flex:1">OK</button>
+    </div>
   </div>
 </div>
 
@@ -1906,24 +1919,27 @@ function renderLobby(){
 }
 $('#roomBack').addEventListener('click', ()=>{ leaveRoom(); goHome(); });
 /* host: rename or delete the room */
-function renameRoom(){
+async function renameRoom(){
   if(!roomRef || !roomData || !roomData.meta) return;
   if(roomData.meta.hostUid!==save.uid){ toast('Only the host can rename','bad'); return; }
-  const name=(prompt('Room name', roomData.meta.name||'')||'').trim().slice(0,24);
+  const name=await openAsk({title:'Rename room', input:true, value:roomData.meta.name||'', placeholder:'Room name', ok:'Save'});
   if(!name) return;
-  roomRef.child('meta/name').set(name);
-  rememberRoom(currentCode, name, roomData.meta.game||'bingo');
+  const nm=name.slice(0,24);
+  roomRef.child('meta/name').set(nm);
+  rememberRoom(currentCode, nm, roomData.meta.game||'bingo');
   toast('Room renamed','good');
 }
 async function deleteRoom(){
   if(!roomRef || !currentCode || !roomData || !roomData.meta) return;
   if(roomData.meta.hostUid!==save.uid){ toast('Only the host can delete','bad'); return; }
-  if(!confirm('Delete this room for everyone?')) return;
-  const code=currentCode;
-  try{ roomRef.child('members/'+save.uid).onDisconnect().cancel(); }catch(e){}
-  await roomRef.remove();            // wipes the room; other members get "Room closed"
-  forgetRoom(code); detachRoom(); currentCode=null; roomData=null;
-  toast('Room deleted',''); goHome();
+  const ok=await openAsk({title:'Delete this room for everyone?', ok:'Delete', danger:true});
+  if(!ok) return;
+  const code=currentCode, ref=roomRef;
+  try{ ref.child('members/'+save.uid).onDisconnect().cancel(); }catch(e){}
+  forgetRoom(code); detachRoom(); currentCode=null; roomData=null;   // detach first so our own listener can't re-add us
+  try{ await ref.remove(); toast('Room deleted',''); }              // wipes the room; other members get "Room closed"
+  catch(e){ console.warn('room delete failed', e); toast('Could not delete the room','bad'); }
+  goHome();
 }
 $('#renameRoomBtn').addEventListener('click', renameRoom);
 $('#deleteRoomBtn').addEventListener('click', deleteRoom);
@@ -1945,12 +1961,12 @@ function appJoinURL(code){
 const roomInviteText = () => `Join me on Aircade 🎮  Room “${(roomData&&roomData.meta&&roomData.meta.name)||'my room'}” · Code ${currentCode}  → ${appJoinURL(currentCode)}`;
 
 /* file a report on another player -> lands in the backoffice moderation queue */
-function reportPlayer(m){
+async function reportPlayer(m){
   if(!NET_OK){ toast('No connection','bad'); return; }
-  const reason = prompt('Report '+(m.name||'player')+' for:', 'Abusive behaviour');
-  if(reason===null) return;
+  const reason = await openAsk({title:'Report '+(m.name||'player')+' for:', input:true, value:'Abusive behaviour', placeholder:'Reason', ok:'Report', danger:true});
+  if(!reason) return;
   AC.child('reports').push({ kind:'player', targetUid:m.uid, targetHandle:m.name||'player',
-    reporterUid:save.uid, reporterHandle:save.handle||'player', reason:(reason||'').slice(0,120),
+    reporterUid:save.uid, reporterHandle:save.handle||'player', reason:reason.slice(0,120),
     roomCode:currentCode||'', at:TS(), status:'open' })
     .then(()=>toast('Reported. Thanks for flagging','good')).catch(()=>toast('Could not report','bad'));
 }
@@ -2243,18 +2259,41 @@ function openPlayerSheet(p){
     <div style="font-family:var(--font-display);font-weight:800;font-size:21px;display:flex;justify-content:center;align-items:center;gap:3px">${escapeHtml(p.name||'Player')}${verifyMark(p.verify,true)}</div>
     <div class="small muted center" style="margin:4px 0 18px">Online now</div>
     <div style="display:flex;gap:10px">
-      <button class="btn purple" id="playerMsgBtn" style="flex:1">💬 Message</button>
+      <button class="btn" id="playerMsgBtn" style="flex:1"></button>
       <button class="btn" id="playerFollowBtn" style="flex:1"></button>
     </div>`;
-  const btn=$('#playerFollowBtn');
+  const btn=$('#playerFollowBtn'), msgBtn=$('#playerMsgBtn');
   let fol=isFollowing(p.uid);
-  const paint=()=>{ btn.textContent=fol?'Following ✓':'Follow'; btn.className='btn '+(fol?'ghost':'green'); };
+  const paint=()=>{
+    btn.textContent=fol?'Following ✓':'Follow'; btn.className='btn '+(fol?'ghost':'green');
+    // DMs are friends-only: you can only start a chat with someone you follow
+    if(fol){ msgBtn.textContent='💬 Message'; msgBtn.className='btn purple'; msgBtn.disabled=false; }
+    else { msgBtn.textContent='🔒 Follow to chat'; msgBtn.className='btn ghost'; msgBtn.disabled=true; }
+  };
   btn.addEventListener('click',()=>{ toggleFollow({uid:p.uid, handle:p.name||'Player', face:p.face||'🎮', verify:p.verify||'none', ring:p.ring||'ring_none'}); fol=!fol; paint(); });
-  $('#playerMsgBtn').addEventListener('click',()=>openDM({uid:p.uid, name:p.name||'Player', face:p.face||'🎮', verify:p.verify||'none', ring:p.ring||'ring_none'}));
+  msgBtn.addEventListener('click',()=>{ if(!fol){ toast('Follow them first to chat','bad'); return; } openDM({uid:p.uid, name:p.name||'Player', face:p.face||'🎮', verify:p.verify||'none', ring:p.ring||'ring_none'}); });
   paint();
   $('#playerOverlay').classList.add('open');
 }
 function closePlayer(){ $('#playerOverlay').classList.remove('open'); }
+
+/* in-app confirm / prompt (iOS home-screen PWAs block window.confirm/prompt) */
+let askCb=null;
+function openAsk({title, input=false, value='', placeholder='', ok='OK', danger=false}){
+  $('#askTitle').textContent=title;
+  const inp=$('#askInput');
+  if(input){ inp.style.display=''; inp.value=value; inp.placeholder=placeholder||''; } else inp.style.display='none';
+  const okBtn=$('#askOk'); okBtn.textContent=ok; okBtn.className='btn '+(danger?'danger':'green');
+  $('#askOverlay').classList.add('open');
+  if(input) setTimeout(()=>inp.focus(),120);
+  return new Promise(res=>{ askCb=res; });
+}
+function closeAsk(val){ $('#askOverlay').classList.remove('open'); const cb=askCb; askCb=null; if(cb) cb(val); }
+$('#askOk').addEventListener('click',()=>closeAsk($('#askInput').style.display==='none' ? true : $('#askInput').value.trim()));
+$('#askCancel').addEventListener('click',()=>closeAsk(null));
+$('#askClose').addEventListener('click',()=>closeAsk(null));
+$('#askOverlay').addEventListener('click',e=>{ if(e.target.id==='askOverlay') closeAsk(null); });
+$('#askInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#askOk').click(); }});
 
 /* ---- direct messages: dm/{sortedPairId}, inbox at dmIndex/{me} ---- */
 let dmRef=null, dmCb=null, dmPeer=null;

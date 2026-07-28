@@ -356,7 +356,8 @@ main{padding:22px 0 calc(60px + var(--safe-b))}
         <div class="ann-preview" id="annPreview"><span id="annText">No announcement live</span></div>
         <input class="field" id="annInput" maxlength="90" placeholder="e.g. Darts is live! Tap to play." autocomplete="off" style="margin:12px 0" />
         <div style="display:flex;gap:10px">
-          <button class="btn ghost small" id="annClear">Clear</button>
+          <button class="btn ghost small" id="annEdit">Edit current</button>
+          <button class="btn danger small" id="annClear">Delete</button>
           <button class="btn green small" id="annPublish">Publish</button>
         </div>
       </div>
@@ -789,7 +790,8 @@ async function toggleFlag(f){
 }
 $('#annPublish').addEventListener('click', async ()=>{ const v=$('#annInput').value.trim(); if(!v){ toast('Type a message first'); return; }
   try{ await AC.child('announcement').set({text:v, at:TS(), by:myHandle}); announcement=v; logAudit('published an announcement','"'+v+'"'); renderGrowth(); $('#annInput').value=''; toast('Announcement published'); }catch(e){ toast('Failed (admin only)'); } });
-$('#annClear').addEventListener('click', async ()=>{ try{ await AC.child('announcement').remove(); announcement=''; logAudit('cleared the announcement',''); renderGrowth(); toast('Announcement cleared'); }catch(e){ toast('Failed'); } });
+$('#annEdit').addEventListener('click', ()=>{ if(!announcement){ toast('Nothing live to edit'); return; } $('#annInput').value=announcement; $('#annInput').focus(); toast('Loaded. Edit and Publish to update'); });
+$('#annClear').addEventListener('click', async ()=>{ if(!announcement){ toast('Nothing to delete'); return; } try{ await AC.child('announcement').remove(); announcement=''; logAudit('deleted the announcement',''); renderGrowth(); $('#annInput').value=''; toast('Announcement deleted'); }catch(e){ toast('Failed'); } });
 $('#lbResetBtn').addEventListener('click',()=>{ toast('Leaderboard reset needs server-side wins (later)'); });
 
 /* ============================================================ SIGN-IN GATE (real) */
