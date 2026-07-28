@@ -344,6 +344,14 @@ button{font-family:inherit;cursor:pointer;color:inherit}
 .lb-sep{text-align:center;color:var(--faint);padding:2px 0;letter-spacing:3px}
 .shopbtn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line-2);background:var(--card);font-size:19px;flex:none;margin-right:8px;transition:transform .12s var(--pop)}
 .shopbtn:active{transform:scale(.9)}
+.dm-sheet{height:72vh;display:flex;flex-direction:column}
+.dm-msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:7px;margin:6px 0 12px;padding-right:2px}
+.dm-msg{max-width:78%;padding:9px 13px;border-radius:16px;font-size:14px;line-height:1.35;word-break:break-word}
+.dm-msg.them{align-self:flex-start;background:var(--plum-3);border-bottom-left-radius:5px}
+.dm-msg.me{align-self:flex-end;background:var(--mint);color:#053a28;border-bottom-right-radius:5px;font-weight:600}
+.dm-empty{margin:auto;color:var(--ink-faint);font-size:13px;text-align:center;padding:20px}
+#dmInbox .fs{display:flex;min-width:0}
+.dm-open{flex:none;color:var(--faint);font-size:22px;font-weight:700}
 .pill.danger{border-color:var(--coral);color:var(--coral)}
 .room-item:active{transform:scale(.98)}
 .room-item .ri-emoji{width:44px;height:44px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;
@@ -974,6 +982,11 @@ button{font-family:inherit;cursor:pointer;color:inherit}
     </div>
 
     <div class="panel mt">
+      <p class="section-t">💬 Messages</p>
+      <div id="dmInbox"></div>
+    </div>
+
+    <div class="panel mt">
       <p class="section-t">Players online</p>
       <div id="onlineList"></div>
     </div>
@@ -1049,7 +1062,7 @@ button{font-family:inherit;cursor:pointer;color:inherit}
   </div>
 </div>
 
-<!-- ============ PLAYER SHEET (tap a player -> name + follow) ============ -->
+<!-- ============ PLAYER SHEET (tap a player -> name + follow + message) ============ -->
 <div class="overlay" id="playerOverlay">
   <div class="sheet" style="text-align:center;max-width:340px">
     <div class="sheet-h">
@@ -1057,6 +1070,24 @@ button{font-family:inherit;cursor:pointer;color:inherit}
       <button class="icon-btn" id="closePlayer" aria-label="Close">✕</button>
     </div>
     <div id="playerSheetBody"></div>
+  </div>
+</div>
+
+<!-- ============ DIRECT MESSAGE ============ -->
+<div class="overlay" id="dmOverlay">
+  <div class="sheet dm-sheet">
+    <div class="sheet-h">
+      <div style="display:flex;align-items:center;gap:10px;min-width:0">
+        <div class="avatar" id="dmAvatar" data-verify="none" style="width:36px;height:36px;flex:none"><div class="face-c" id="dmFace" style="font-size:18px">🎮</div></div>
+        <h2 id="dmName" style="font-size:17px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Chat</h2>
+      </div>
+      <button class="icon-btn" id="closeDM" aria-label="Close">✕</button>
+    </div>
+    <div class="dm-msgs" id="dmMsgs"></div>
+    <form class="talkform" id="dmForm">
+      <input id="dmInput" maxlength="300" placeholder="Message…" autocomplete="off" />
+      <button class="btn small purple" type="submit">Send</button>
+    </form>
   </div>
 </div>
 
@@ -1192,6 +1223,7 @@ function subscribeServerState(){
   // my own sanction status
   AC.child('moderation/'+save.uid).on('value', s=>{ myModeration = s.val(); applyModeration(); });
   subscribeFollows();
+  subscribeInbox();
 }
 
 /* ---- follow graph (real, denormalized: follows/{me}/{target} + followers/{target}/{me}) ---- */
@@ -2210,15 +2242,91 @@ function openPlayerSheet(p){
     </div>
     <div style="font-family:var(--font-display);font-weight:800;font-size:21px;display:flex;justify-content:center;align-items:center;gap:3px">${escapeHtml(p.name||'Player')}${verifyMark(p.verify,true)}</div>
     <div class="small muted center" style="margin:4px 0 18px">Online now</div>
-    <button class="btn" id="playerFollowBtn" style="width:100%"></button>`;
+    <div style="display:flex;gap:10px">
+      <button class="btn purple" id="playerMsgBtn" style="flex:1">💬 Message</button>
+      <button class="btn" id="playerFollowBtn" style="flex:1"></button>
+    </div>`;
   const btn=$('#playerFollowBtn');
   let fol=isFollowing(p.uid);
   const paint=()=>{ btn.textContent=fol?'Following ✓':'Follow'; btn.className='btn '+(fol?'ghost':'green'); };
   btn.addEventListener('click',()=>{ toggleFollow({uid:p.uid, handle:p.name||'Player', face:p.face||'🎮', verify:p.verify||'none', ring:p.ring||'ring_none'}); fol=!fol; paint(); });
+  $('#playerMsgBtn').addEventListener('click',()=>openDM({uid:p.uid, name:p.name||'Player', face:p.face||'🎮', verify:p.verify||'none', ring:p.ring||'ring_none'}));
   paint();
   $('#playerOverlay').classList.add('open');
 }
 function closePlayer(){ $('#playerOverlay').classList.remove('open'); }
+
+/* ---- direct messages: dm/{sortedPairId}, inbox at dmIndex/{me} ---- */
+let dmRef=null, dmCb=null, dmPeer=null;
+const dmConvId=(a,b)=>[a,b].sort().join('__');
+function openDM(p){
+  if(!p || p.uid===save.uid) return;
+  if(!NET_OK){ toast('Connecting…',''); return; }
+  closePlayer();
+  dmPeer=p;
+  $('#dmName').textContent=p.name||'Player';
+  $('#dmFace').textContent=p.face||'🎮';
+  $('#dmAvatar').dataset.verify=p.verify||'none';
+  detachDM();
+  dmRef=AC.child('dm/'+dmConvId(save.uid, p.uid));
+  $('#dmMsgs').innerHTML='<div class="dm-empty">Loading…</div>';
+  dmCb=dmRef.on('value', s=>{
+    const msgs=s.val()||{};
+    const list=Object.keys(msgs).sort((a,b)=>(msgs[a].at||0)-(msgs[b].at||0)).slice(-60).map(k=>msgs[k]);
+    renderDM(list);
+  });
+  $('#dmOverlay').classList.add('open');
+  setTimeout(()=>{ const i=$('#dmInput'); if(i) i.focus(); }, 120);
+}
+function renderDM(list){
+  const m=$('#dmMsgs'); if(!m) return;
+  if(!list.length){ m.innerHTML='<div class="dm-empty">No messages yet. Say hi 👋</div>'; return; }
+  m.innerHTML='';
+  list.forEach(x=>{ const el=document.createElement('div'); el.className='dm-msg '+(x.from===save.uid?'me':'them'); el.textContent=x.text||''; m.appendChild(el); });
+  m.scrollTop=m.scrollHeight;
+}
+function sendDM(){
+  const inp=$('#dmInput'); const v=(inp.value||'').trim();
+  if(!v || !dmRef || !dmPeer) return;
+  if(isSanctioned()){ toast('You can’t chat right now','bad'); return; }
+  inp.value='';
+  const text=v.slice(0,300), at=TS();
+  dmRef.push({from:save.uid, text, at});
+  // update both inboxes so the conversation shows on each profile
+  AC.child('dmIndex/'+save.uid+'/'+dmPeer.uid).set({uid:dmPeer.uid, name:dmPeer.name||'Player', face:dmPeer.face||'🎮', verify:dmPeer.verify||'none', ring:dmPeer.ring||'ring_none', last:text, at});
+  AC.child('dmIndex/'+dmPeer.uid+'/'+save.uid).set({uid:save.uid, name:save.handle, face:save.avatar, verify:save.verify, ring:effectiveRing(), last:text, at});
+}
+function detachDM(){ if(dmCb && dmRef){ dmRef.off('value', dmCb); } dmCb=null; dmRef=null; }
+function closeDM(){ detachDM(); $('#dmOverlay').classList.remove('open'); dmPeer=null; }
+$('#dmForm').addEventListener('submit', e=>{ e.preventDefault(); sendDM(); });
+$('#closeDM').addEventListener('click', closeDM);
+$('#dmOverlay').addEventListener('click', e=>{ if(e.target.id==='dmOverlay') closeDM(); });
+
+/* the Messages inbox shown on the profile */
+let inboxData={}, inboxSubbed=false;
+function subscribeInbox(){
+  if(!NET_OK || inboxSubbed || !save.uid) return; inboxSubbed=true;
+  AC.child('dmIndex/'+save.uid).on('value', s=>{ inboxData=s.val()||{}; if($('#profile') && $('#profile').classList.contains('active')) renderInbox(); });
+}
+function renderInbox(){
+  const wrap=$('#dmInbox'); if(!wrap) return;
+  const list=Object.keys(inboxData).map(uid=>Object.assign({uid}, inboxData[uid])).sort((a,b)=>(b.at||0)-(a.at||0));
+  if(!list.length){ wrap.innerHTML='<div class="small muted">No messages yet. Tap a player and start a chat.</div>'; return; }
+  wrap.innerHTML='';
+  list.forEach(c=>{
+    const ra=ringAttrs(c.ring);
+    const row=document.createElement('button'); row.className='follow-row';
+    row.innerHTML=`
+      <div class="avatar${ra.cls}" data-verify="${c.verify||'none'}" style="width:44px;height:44px;${ra.style}"><div class="face-c" style="font-size:22px">${c.face||'🎮'}</div></div>
+      <div class="meta">
+        <div class="fn"><span class="nm-ellipsis">${escapeHtml(c.name||'Player')}</span>${verifyMark(c.verify,true)}</div>
+        <div class="fs"><span class="nm-ellipsis">${escapeHtml(c.last||'')}</span></div>
+      </div>
+      <span class="dm-open">›</span>`;
+    row.addEventListener('click',()=>openDM({uid:c.uid, name:c.name||'Player', face:c.face||'🎮', verify:c.verify||'none', ring:c.ring||'ring_none'}));
+    wrap.appendChild(row);
+  });
+}
 function renderLive(){
   const panel=$('#livePanel'), list=$('#liveList'); if(!panel) return;
   const rooms=Object.keys(homeRooms).map(code=>{
@@ -2269,6 +2377,7 @@ function openProfile(){
   hidePanelOf('#feedList');            // no fabricated activity feed
   publishLeaderboard();                // refresh my standing
   renderLeaderboard();                 // the coins leaderboard now lives on the profile
+  renderInbox();                       // your DM conversations
   buildOnlineList();
   buildFollowingList();
   show('profile');
